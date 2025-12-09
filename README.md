@@ -1,9 +1,9 @@
 ### ser2mms - serial to MMS (Manufacturing Message Specification) conversion utility
 
-### State
+#### State
 Is not stable and still under development...
 
-### Base configuration (HAL depends of OS)
+#### Base configuration (HAL depends of OS)
 
 ```sh
 make                        // default Linux x86_64
@@ -14,7 +14,7 @@ make ARCH=arm    OS=rtos    // ARM runned under RTOS
 make ARCH=arm    OS=bare    // Bare-metal ARM
 ```
 
-### How to use
+#### How to use
 ```c
 s2m_t *s2m 
 s2m = ser2mms_new(

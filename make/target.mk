@@ -1,114 +1,81 @@
-# ==============================================================================
-# Двумерная система: ARCH + OS
-# ==============================================================================
-UNAME := $(shell uname)
 
-# Архитектурные префиксы
-ARM_LINUX_TOOLCHAIN = arm-linux-gnueabihf-
-ARM_BARE_TOOLCHAIN = arm-none-eabi-
-X86_MINGW_TOOLCHAIN = x86_64-w64-mingw32-
-
-# ==============================================================================
-# Определение ARCH и OS (если не заданы явно)
-# ==============================================================================
+# ===== Определение ARCH и OS по умолчанию (если аргументы не заданы явно) =====
 
 ifndef ARCH
-ARCH = x86_64  # По умолчанию
+ARCH = x86_64
 endif
 
 ifndef OS
-ifeq ($(UNAME), Linux)
 OS = linux
-else ifeq ($(findstring MINGW,$(UNAME)), MINGW)
-OS = win32
-else
-OS = linux
-endif
 endif
 
-# ==============================================================================
-# Определение HAL_IMPL на основе OS (не ARCH!)
-# ==============================================================================
+# ==================== Определение PORT_IMPL на основе OS ======================
+
+PORT_IMPL =
 
 ifeq ($(OS), linux)
-HAL_IMPL = POSIX
-endif
-
-ifeq ($(OS), win32)
-HAL_IMPL = WIN32
+PORT_IMPL = LINUX
 endif
 
 ifeq ($(OS), bare)
-HAL_IMPL = BARE
+PORT_IMPL = BARE
 endif
 
 ifeq ($(OS), rtos)
-HAL_IMPL = RTOS
+PORT_IMPL = RTOS
 endif
 
-# ==============================================================================
-# Настройка тулчейна на основе ARCH + OS
-# ==============================================================================
+# ================== Настройка тулчейна на основе ARCH + OS ====================
+
+LINUX_HW_IMPL =
+
+# Архитектурные префиксы
+WSL_LINUX_TOOLCHAIN =
+ARM_LINUX_TOOLCHAIN = arm-linux-gnueabihf-
+ARM_BARE_TOOLCHAIN = arm-none-eabi-
 
 # x86_64 + Linux
 ifeq ($(ARCH)-$(OS), x86_64-linux)
-TOOLCHAIN_PREFIX =
-CFLAGS += -m64
-endif
-
-# x86_64 + Windows (кросс-компиляция)
-ifeq ($(ARCH)-$(OS), x86_64-win32)
-TOOLCHAIN_PREFIX = $(X86_MINGW_TOOLCHAIN)
-CFLAGS += -DWIN32
+LINUX_HW_IMPL = WSL
+TOOLCHAIN_PREFIX = $(WSL_LINUX_TOOLCHAIN)
+CFLAGS += -m64 -pthread
+CFLAGS += -Wall -g -Wextra
+CFLAGS += -fsanitize=address -fstack-protector-strong
 endif
 
 # ARM + Linux
 ifeq ($(ARCH)-$(OS), arm-linux)
+LINUX_HW_IMPL = ARM
 TOOLCHAIN_PREFIX = $(ARM_LINUX_TOOLCHAIN)
-CFLAGS += -march=armv7-a
-CFLAGS += -DARM_LINUX
+CFLAGS += -mcpu=cortex-a8 -mfloat-abi=hard -mfpu=neon
+CFLAGS += -Wall -g -Wextra
 endif
 
 # ARM + bare-metal
-ifeq ($(ARCH)-$(OS), arm-bare)
-TOOLCHAIN_PREFIX = $(ARM_BARE_TOOLCHAIN)
-CFLAGS += -mcpu=cortex-m4 -mthumb
-endif
+# ifeq ($(ARCH)-$(OS), arm-bare)
+# TOOLCHAIN_PREFIX = $(ARM_BARE_TOOLCHAIN)
+# CFLAGS += -mcpu=cortex-m4 -mthumb
+# endif
 
 # ARM + FreeRTOS
-ifeq ($(ARCH)-$(OS), arm-rtos)
-TOOLCHAIN_PREFIX = $(ARM_BARE_TOOLCHAIN)
-# CFLAGS += -mcpu=cortex-m4 -mthumb -DFREERTOS
-CFLAGS += -Wall -g -Wextra -mcpu=cortex-m4 -mthumb -DARM_FREERTOS
-CFLAGS += -DSTM32F407xx -DARM_RTOS
-endif
+# ifeq ($(ARCH)-$(OS), arm-rtos)
+# TOOLCHAIN_PREFIX = $(ARM_BARE_TOOLCHAIN)
+# # CFLAGS += -mcpu=cortex-m4 -mthumb -DFREERTOS
+# CFLAGS += -Wall -g -Wextra -mcpu=cortex-m4 -mthumb -DARM_FREERTOS
+# CFLAGS += -DSTM32F407xx -DARM_RTOS
+# endif
 
-# ==============================================================================
-# Опционально: MCU-specific настройки через переменную MCU
-# ==============================================================================
+# PORT_IMPL объявлен всегда и имеет значение, отражающее выбранную плафторму
+CFLAGS += -DPORT_IMPL=$(PORT_IMPL)
+# LINUX_HW_IMPL объявлен всегда, но имеет значение только, если PORT_IMPL==LINUX
+CFLAGS += -DLINUX_HW_IMPL=$(LINUX_HW_IMPL)
 
-ifdef MCU
-ifeq ($(MCU), STM32F407)
-CFLAGS += -DSTM32F407xx -DSTM32F4
-CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
-endif
+# ====================== Компилятор и директории сборки ========================
 
-ifeq ($(MCU), STM32F103)
-CFLAGS += -DSTM32F103xB -DSTM32F1
-CFLAGS += -mfloat-abi=soft
-endif
-endif
-
-# ==============================================================================
-# Компилятор и директории сборки
-# ==============================================================================
+LIB_BIN_DIR = $(SER2MMS_HOME)/bin
+LIB_OBJS_DIR = $(SER2MMS_HOME)/build
+# Определяем путь к библиотеке (важно для примеров!)
+LIB_SER2MMS = $(LIB_BIN_DIR)/ser2mms.a
 
 CC = $(TOOLCHAIN_PREFIX)gcc
 AR = $(TOOLCHAIN_PREFIX)ar
-
-# Отдельная директория для каждой комбинации ARCH-OS
-LIB_OBJS_DIR = $(SER2MMS_HOME)/build_$(ARCH)_$(OS)
-
-ifdef MCU
-LIB_OBJS_DIR = $(SER2MMS_HOME)/build_$(ARCH)_$(OS)_$(MCU)
-endif

@@ -1,36 +1,67 @@
-# Linked top library
-LIBDIR    := ../..
-LIB       := $(LIBDIR)/bin/ser2mms.a
-LIBPERIPH := $(LIBDIR)/third/c-periphery/periphery.a
-IECDIR   = ../../../mylibiec61850
 
-# For sample (main) only
-# CC       = gcc
-CC       = arm-linux-gnueabihf-gcc
-INCLUDES = -I$(LIBDIR)/include -I$(LIBDIR)/src/include \
-           -I$(LIBDIR)/src/include/core -I$(LIBDIR)/src/include/port \
-           -I$(IECDIR)/include
-CFLAGS   = -Wall -g -Wextra $(INCLUDES)
-LDFLAGS  = $(LIB) $(LIBPERIPH)
-#LIBS     = ../../bin/mb.a ../../third/c-periphery/periphery.a
-SLAVE     = ser2mms_slave
-POLL      = ser2mms_poll
+SER2MMS_HOME = ..
 
-all: $(SLAVE)
+include $(SER2MMS_HOME)/make/target.mk
+include $(SER2MMS_HOME)/make/includes.mk
+
+# ====================== Подключение сторонних библиотек =======================
+
+# Constantly connected c-periphery
+LIB_PERIPHERY = $(PERIPHERY_HOME)/periphery.a
+LDFLAGS = $(LIB_SER2MMS) $(LIB_PERIPHERY)
+
+# Conditionally connected libiec61850
+ifeq ($(USE_LIBIEC), 1)
+LIB_IEC61850 = $(IEC61850_HOME)/bin/mylibiec61850.a
+LIBASN1  := $(IEC61850_HOME)/third/ASN1/bin/asn1.a
+LIB8823  := $(IEC61850_HOME)/third/ISO8823/bin/iso8823.a
+LIB8650  := $(IEC61850_HOME)/third/ISO8650/bin/iso8650.a
+LIB9506  := $(IEC61850_HOME)/third/ISO9506/bin/iso9506.a
+# Additional includes
+LIB_INC_DIRS += $(IEC61850_HOME)/third/ASN1/include/ASN1
+LIB_INC_DIRS += $(IEC61850_HOME)/third/ISO8823/include/iso8823
+LIB_INC_DIRS += $(IEC61850_HOME)/third/ISO8650/include/iso8650
+LIB_INC_DIRS += $(IEC61850_HOME)/third/ISO9506/include/iso9506
+# Additional link flags
+LDFLAGS += $(LIB_IEC61850) $(LIB8823) $(LIB8650) $(LIB9506) $(LIBASN1)
+endif
+
+# Sample binaries
+SLAVE = ser2mms_slave
+POLL = ser2mms_poll
+
+INCLUDES = $(addprefix -I,$(LIB_INC_DIRS))
+
+# ========================= Определение целей сборки ===========================
+
+.PHONY: all slave poll clean clean_all
+
+all: $(SLAVE) $(POLL)
 
 slave: $(SLAVE)
+
 poll: $(POLL)
 
-$(SLAVE): $(LIB) $(SLAVE).c
-	$(CC) $(CFLAGS) $(SLAVE).c $(LDFLAGS) -o $@
+$(SLAVE): $(LIB_SER2MMS) $(LIB_PERIPHERY) $(SLAVE).c
+	$(CC) $(CFLAGS) $(SLAVE).c $(INCLUDES) $(LDFLAGS) -o $@
 
-$(POLL): $(LIB) $(POLL).c
-	$(CC) $(CFLAGS) $(POLL).c $(LDFLAGS) -o $@
+$(POLL): $(LIB_SER2MMS) $(LIB_PERIPHERY) $(POLL).c
+	$(CC) $(CFLAGS) $(POLL).c $(INCLUDES) $(LDFLAGS) -o $@
 
-$(LIB):
-	$(MAKE) -C $(LIBDIR)
+$(LIB_SER2MMS):
+	$(MAKE) -C $(SER2MMS_HOME)
+
+$(LIB_PERIPHERY):
+	$(MAKE) -C $(PERIPHERY_HOME) CROSS_COMPILE=$(TOOLCHAIN_PREFIX)
+
+# ========================= Определение целей очистки ==========================
 
 clean:
 	rm -f $(SLAVE)
 	rm -f $(POLL)
-	$(MAKE) -C $(LIBDIR) clean
+
+clean_all:
+	rm -f $(SLAVE)
+	rm -f $(POLL)
+	$(MAKE) -C $(SER2MMS_HOME) clean
+	$(MAKE) -C $(PERIPHERY_HOME) clean

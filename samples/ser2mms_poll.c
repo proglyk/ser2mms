@@ -1,6 +1,6 @@
 /**
   * @file   ser2mms_pool.c
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   09-October-2025
   */
 
@@ -9,10 +9,12 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <time.h>
 
-static void write_carg_pool( void *, u16_t *, u32_t, u8_t, u8_t );
-static void write_subs_pool( void *, prm_t *, u32_t );
-static void read_answ_pool( void *, u16_t *, u32_t * );
+
+static void write_carg_poll( void *, u16_t *, u32_t, u8_t, u8_t );
+static void write_subs_poll( void *, prm_t *, u32_t );
+static void read_answ_poll( void *, u16_t *, u32_t * );
 static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) );
 static void handler_sigquit(int sig);
 static void handler_sigint(int sig);
@@ -21,27 +23,17 @@ volatile bool runned = true;
 static s2m_t *s2m = NULL;
 
 static rs485_init_t s2m_stty_init = {
-  
-#if defined(LINUX)
-#if defined(ARM)
-  .device_path = "/dev/ttyS1",
-  .gpio_path   = "/dev/gpiochip3",
-  .gpio_pin    = 26
-#else
-  .device_path = "/dev/ttyUSB0",
-//.device_path = "/dev/ttyV0",
+#if (PORT_IMPL==PORT_IMPL_LINUX)
+#if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
+  .device_path = "/dev/ttyV0",
+//.device_path = "/dev/ttyUSB0",
   .gpio_path   = NULL
-#endif //ARM
-
-#elif defined(WIN32)
-
-#elif defined(RTOS)||defined(BARE)
-  .uart        = NULL,
-  .baudrate    = 9600,
-  .gpio_port   = NULL,
-  .gpio_pin    = 0
-#endif //LINUX
-
+#elif (LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+#error "Not available"
+#endif
+#else
+#error "Not available"
+#endif
 };
 
 int main(void)
@@ -52,13 +44,13 @@ int main(void)
   vSetSignal(SIGINT,  handler_sigint);  // код (2) 'Ctrl+C'
   
   // init
-  s2m = ser2mms_new(NULL, write_carg_slave, write_subs_slave, read_answ_slave, 
+  s2m = ser2mms_new(NULL, write_carg_poll, write_subs_poll, read_answ_poll, 
                     S2M_POLL, 12, 
                     (void *)&s2m_stty_init);
   assert(s2m);
   
   // run
-  s2m_run(s2m);
+  ser2mms_run(s2m);
   printf("Runned\r\n");
   
   // loop
@@ -72,7 +64,7 @@ int main(void)
   } while( runned );
   
   // close
-  s2m_stop(s2m);
+  ser2mms_stop(s2m);
   printf("Stopped\r\n");
   return 0; 
 }
@@ -84,7 +76,7 @@ int main(void)
   * @param ptr: Указатель на структуру со значениями из посылки.
   * @retval none: Нет
   */
-static void write_carg_pool( void *opaque, u16_t *carg_buf, 
+static void write_carg_poll( void *opaque, u16_t *carg_buf, 
                         __UNUSED u32_t carg_len, u8_t ds, u8_t page )
 {
   // f32_t ftemp;
@@ -163,16 +155,29 @@ static void write_carg_pool( void *opaque, u16_t *carg_buf,
   * @param cargpage: Номер текущей страницы каретки.
   * @param ptr: Указатель на структуру со значениями из посылки.
   * @retval none: Нет */
-static void write_subs_pool( void *opaque, prm_t *subs_buf, 
-                        __UNUSED u32_t subs_len )
+static void write_subs_poll(void *opaque, prm_t *subs_buf, 
+                            u32_t subs_len)
 {
-  // f32_t ftemp;
-  s2m_t *s2m = (s2m_t *)opaque;
-  assert(s2m);
+  uint32_t ts_int[2];
   
+  assert(subs_buf);
+  (void)opaque;
+  (void)subs_len;
+
+#if (PORT_IMPL==PORT_IMPL_LINUX)
+  struct timespec tspec;
+  clock_gettime(CLOCK_REALTIME, &tspec);
+  ts_int[0] = tspec.tv_sec;
+  ts_int[1] = tspec.tv_nsec / 1000000;
+#elif (PORT_IMPL==PORT_IMPL_ARM)
+  GET_SYSTEM_TIME((timestamp+0),(timestamp+1));
+#else
+#error Macro 'PORT_IMPL' definition is needed
+#endif
+    
   subs_buf[0].sl = 1;
-  subs_buf[0].pul[0] = 1762506277;
-  subs_buf[0].pul[1] = 50;
+  subs_buf[0].pul[0] = ts_int[0];
+  subs_buf[0].pul[1] = ts_int[1];
   
   subs_buf[1].sl = 2;
   subs_buf[1].pul[0] = 1762506309;
@@ -222,7 +227,7 @@ static void write_subs_pool( void *opaque, prm_t *subs_buf,
   * @param cargpage: Номер текущей страницы каретки.
   * @param ptr: Указатель на структуру со значениями из посылки.
   * @retval none: Нет */
-static void read_answ_pool( __UNUSED void *argv, u16_t *answ_buf,
+static void read_answ_poll( __UNUSED void *argv, u16_t *answ_buf,
                             __UNUSED u32_t *answ_len )
 {
   // DataAttribute *data_attr;
@@ -267,7 +272,7 @@ static void handler_sigquit(int sig)
   
   switch ( sig ) {
     case SIGQUIT:
-      s2m_test_tick(s2m);
+      ser2mms_test_tick(s2m);
     break;
   }
 }
@@ -281,7 +286,7 @@ static void handler_sigint(int sig)
   
   switch ( sig ) {
     case SIGINT:
-      s2m_set_id(s2m, id++);
+      ser2mms_set_id(s2m, id++);
       // s2m_set_cmd(s2m, mode ^= 1);
       //printf("[sig] mode=%01d\n", id);
       //mb__test_recv(mb__inst());

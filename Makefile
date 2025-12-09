@@ -17,6 +17,7 @@ LIB_SRC_DIRS += src/core/transp_impl
 # Платформо-зависимый HAL-слой (HAL_IMPL определен в target.mk)
 ifeq ($(HAL_IMPL), POSIX)
 LIB_SRC_DIRS += src/port/linux
+LIB_INC_DIRS += ./third/c-periphery/src
 else ifeq ($(HAL_IMPL), WIN32)
 LIB_SRC_DIRS += src/port/win32
 else ifeq ($(HAL_IMPL), RTOS)

@@ -1,13 +1,15 @@
 /**
   * @file   mms_if.c
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   09-October-2025
   */
 
 #include "mms_if.h"
+#include <assert.h>
 #include <stdlib.h>
+#include <time.h>
 
-#if (!LIBIEC_EXIST)
+#if (S2M_USE_LIBIEC==0)
   
 static void MmsValue_delete(MmsValue* mms); // TODO
 static bool IedServer_updateAttributeValue(void *, DataAttribute *, MmsValue *); // TODO
@@ -17,25 +19,22 @@ static MmsValue* MmsValue_newBitString(u32_t argc);
 static void MmsValue_setBitStringBit(MmsValue *mms, int, bool);
 static MmsValue *MmsValue_newUtcTimeByTimestamp(u32_t *);
 
-#endif//LIBIEC_EXIST
+#endif//S2M_USE_LIBIEC
 
 /**
-  * @brief Функция обновления полей датасетов.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
+  * @brief Задание значения типа INT32 для указанного аттрибута.
   */
-bool mms_set_attr_s32( void *argv, DataAttribute* attr, s32_t value )
+bool mms_if_set_attr_s32( void *argv, DataAttribute* attr, const s32_t value )
 {
   IedServer ied = (IedServer)argv;
-  bool result = false;
+  assert(ied && attr);
   
   // локальная сущность MmsValue
   MmsValue* pValueMms = MmsValue_newIntegerFromInt32(value);
   // если не удалось выделелить память, то выходим
   if (!pValueMms) return false;
   // Обновляем аттрибут
-  result = IedServer_updateAttributeValue(ied, attr, pValueMms);
+  bool result = IedServer_updateAttributeValue(ied, attr, pValueMms);
   // освобождаем ресурс
   MmsValue_delete(pValueMms);
   
@@ -43,22 +42,19 @@ bool mms_set_attr_s32( void *argv, DataAttribute* attr, s32_t value )
 }
 
 /**
-  * @brief Функция обновления полей датасетов.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
+  * @brief Задание значения типа FLOAT для указанного аттрибута.
   */
-bool mms_set_attr_f32( void *argv, DataAttribute* attr, f32_t value )
+bool mms_if_set_attr_f32( void *argv, DataAttribute* attr, const f32_t value )
 {
   IedServer ied = (IedServer)argv;
-  bool result = false;
+  assert(ied && attr);
   
   // локальная сущность MmsValue
   MmsValue* pValueMms = MmsValue_newFloat(value);
   // если не удалось выделелить память, то выходим
   if (!pValueMms) return false;
   // Обновляем аттрибут
-  result = IedServer_updateAttributeValue(ied, attr, pValueMms);
+  bool result = IedServer_updateAttributeValue(ied, attr, pValueMms);
   // освобождаем ресурс
   MmsValue_delete(pValueMms);
   
@@ -66,25 +62,37 @@ bool mms_set_attr_f32( void *argv, DataAttribute* attr, f32_t value )
 }
 
 /**
-  * @brief Функция задания поля времени указанного аттрибута.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
+  * @brief Задание значения типа времени для указанного аттрибута.
   */
-bool mms_set_attr_t( void *argv, DataAttribute *attr, u32_t *pTimestamp )
+bool mms_if_set_attr_t( void *argv, DataAttribute *attr, const u32_t *ts_ext )
 {
   IedServer ied = (IedServer)argv;
-  //uint32_t timestamp[2] = {0,0};
-  MmsValue* pTimeMms = NULL;
+  uint32_t  ts_int[2];
+  // все три аргумента далее нигде не проверяются на валидность
+  assert(ied && attr);
   
-  // локальная сущность MmsValue
-  //MmsValue* pValueMms = MmsValue_newIntegerFromInt32(value);
-  
+  if (!ts_ext) {
+#if (PORT_IMPL==PORT_IMPL_LINUX)
+    struct timespec tspec;
+    clock_gettime(CLOCK_REALTIME, &tspec);
+    ts_int[0] = tspec.tv_sec;
+    ts_int[1] = tspec.tv_nsec / 1000;
+#elif (PORT_IMPL==PORT_IMPL_RTOS)
+#error "Not available"
+    // Получить время с часов
+    //GET_SYSTEM_TIME((timestamp+0),(timestamp+1));
+#elif (PORT_IMPL==PORT_IMPL_BARE)
+#error "Not available"
   // Получить время с часов
   //GET_SYSTEM_TIME((timestamp+0),(timestamp+1));
-  // сохранить его в переменной типа MmsValue
-  pTimeMms = MmsValue_newUtcTimeByTimestamp(pTimestamp);
+#else
+#error "PORT_IMPL must be defined"
+#endif //PORT_IMPL==...
+  }
   
+  // сохранить его в переменной типа MmsValue
+  MmsValue* pTimeMms = MmsValue_newUtcTimeByTimestamp(
+    ts_ext ? (u32_t *)ts_ext : ts_int);
   // если не удалось выделелить память, то выходим
   if (!pTimeMms) return false;
   
@@ -97,14 +105,12 @@ bool mms_set_attr_t( void *argv, DataAttribute *attr, u32_t *pTimestamp )
 }
 
 /**
-  * @brief Функция задания поля времени указанного аттрибута.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
+  * @brief Задание значения типа качества для указанного аттрибута.
   */
-bool mms_set_attr_q( void *argv, DataAttribute* attr, bool quality )
+bool mms_if_set_attr_q( void *argv, DataAttribute* attr, const bool quality )
 {
   IedServer ied = (IedServer)argv;
+  assert(ied && attr);
   
   // локальная сущность MmsValue
   MmsValue* pQualityMms = MmsValue_newBitString(13);
@@ -121,44 +127,56 @@ bool mms_set_attr_q( void *argv, DataAttribute* attr, bool quality )
   return true;
 }
 
-#if (!LIBIEC_EXIST)
+#if (S2M_USE_LIBIEC==0)
 
-static MmsValue *MmsValue_newFloat(__UNUSED f32_t value)
+static MmsValue *MmsValue_newFloat(f32_t value)
 {
+  (void)value;
+  
   return NULL;
 }
 
-static MmsValue *MmsValue_newIntegerFromInt32(__UNUSED s32_t value)
+static MmsValue *MmsValue_newIntegerFromInt32(s32_t value)
 {
+  (void)value;
+  
   return NULL;
 }
 
-static bool IedServer_updateAttributeValue(__UNUSED void *ied, 
-                                           __UNUSED DataAttribute *attr,
-                                           __UNUSED MmsValue *mms)
+static bool IedServer_updateAttributeValue(void *ied, DataAttribute *attr,
+                                           MmsValue *mms)
 {
+  (void)ied;
+  (void)attr;
+  (void)mms;
+  
   return false;
 }
 
-static MmsValue *MmsValue_newBitString(__UNUSED u32_t argc)
+static MmsValue *MmsValue_newBitString(u32_t argc)
 {
+  (void)argc;
+  
   return NULL;
 }
 
-static void MmsValue_setBitStringBit(__UNUSED MmsValue *mms, 
-                                     __UNUSED int value, __UNUSED bool q)
+static void MmsValue_setBitStringBit(MmsValue *mms, int value, bool q)
 {
-  
+  (void)mms;
+  (void)value;
+  (void)q;
 }
 
-static MmsValue *MmsValue_newUtcTimeByTimestamp(__UNUSED u32_t *timestamp)
+static MmsValue *MmsValue_newUtcTimeByTimestamp(u32_t *timestamp)
 {
+  (void)timestamp;
+  
   return NULL;
 }
 
-static void MmsValue_delete(__UNUSED MmsValue *mms)
+static void MmsValue_delete(MmsValue *mms)
 {
-  
+  (void)mms;
 }
 
 #endif//LIBIEC_EXIST

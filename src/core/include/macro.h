@@ -1,6 +1,6 @@
 /**
   * @file   macro.h
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   05-November-2025
   */
 

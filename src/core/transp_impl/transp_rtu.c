@@ -1,6 +1,6 @@
 /**
   * @file   transp_rtu.c
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   10-October-2025
   */
 
@@ -35,7 +35,7 @@ typedef enum {
 struct transp_s
 {
   tmr_t       tmr;
-  rs485_inst_t stty;
+  rs485_t     stty;
   recv_sta_t  recv_sta;
   xmit_sta_t  xmit_sta;
   ev_t        ev_rcvd;
@@ -74,7 +74,7 @@ void *transp_init(__UNUSED int argc, __UNUSED int *pdata, __UNUSED void *argv,
   self->recv_sta = RECV_INIT;
   self->xmit_sta = ((mode == MODE_SLAVE) ? (XMIT_INIT) : (XMIT_ACT));
   // timer
-  self->tmr = tmr__init(2000, (tmr_tick_t)tick, (void *)self);
+  self->tmr = tmr__init(S2M_TRANSP_TIMEOUT, (tmr_tick_t)tick, (void *)self);
   if (!self->tmr) goto error_0;
   
   // rs485
@@ -123,7 +123,7 @@ void transp_del(__UNUSED int argc, void *opaque)
   transp_t *self = (transp_t *)opaque;
   assert(self);
   printf("[transp_del]\r\n");
-  tmr__dis(self->tmr);
+  tmr__del(self->tmr);
   rs485_del(self->stty);
   ev_del(self->ev_rcvd);
   ev_del(self->ev_xmit);
@@ -152,6 +152,7 @@ int transp_poll(transp_t *tp)
 {
   ev_type_t type;
   bool sta = false;
+  s32_t rc;
   
   //printf("[mb_tp__poll] tp->recv_sta is %d\r\n", tp->recv_sta);
   
@@ -169,12 +170,14 @@ int transp_poll(transp_t *tp)
       {
         case EV_RCVD: {
           //
-          if (msg_unpack(tp) < 0) {
+          rc = msg_unpack(tp);
+#if (S2M_DEBUG)
+          if (rc) {
             printf("[transp_poll] MB isn't ok\r\n");
           } else {
             printf("[transp_poll] MB is ok\r\n");
           }
-          
+#endif //S2M_DEBUG
         } break;
         
         case EV_EXEC: {
@@ -363,8 +366,10 @@ static void tick(void *opaque)
   transp_t *self = (transp_t *)opaque;
   assert(self);
   
+#if (S2M_DEBUG)
   printf("[tick] Timer tick!\r\n");
-  
+#endif //S2M_DEBUG
+
   switch ( self->recv_sta )
   {  
     case RECV_INIT: {
@@ -373,7 +378,9 @@ static void tick(void *opaque)
     
     case RECV_ACT: {
       ev_post( self->ev_rcvd, EV_RCVD ); //TODO вернуть на место в RECV_ACT
+#if (S2M_DEBUG)
       printf("[tick] new event\n");
+#endif //S2M_DEBUG
     } break;
     
     //case RECV_IDLE:

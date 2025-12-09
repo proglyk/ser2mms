@@ -1,6 +1,6 @@
 /**
   * @file   ser2mms.c
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   09-October-2025
   */
 
@@ -16,10 +16,10 @@
 static void *poll(void *);
 
 struct ser2mms_s {
-  transp_t     *tp;
+  transp_t *tp;
   void     *ied;
 #if (S2M_USE_THREADS)
-  thread_t thread;
+  thread_t  thread;
 #endif
 };
 
@@ -120,6 +120,12 @@ void ser2mms_set_id(s2m_t *self, u32_t id)
 {
   assert(self);
   transp_set_id(self->tp, id);
+}
+
+void *ser2mms_get_ied(s2m_t *self)
+{
+  assert(self);
+  return self->ied;
 }
 
 #if 0

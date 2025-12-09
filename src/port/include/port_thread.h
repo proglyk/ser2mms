@@ -1,6 +1,6 @@
 /**
   * @file   port_thread.h
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   28-September-2025
   */
 

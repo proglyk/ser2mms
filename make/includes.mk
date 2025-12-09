@@ -1,0 +1,22 @@
+
+# ========== Заголовочные файлы платформо-независимого ядра библиотеки =========
+
+LIB_INC_DIRS  = $(SER2MMS_HOME)/include
+LIB_INC_DIRS += $(SER2MMS_HOME)/src/core/include
+LIB_INC_DIRS += $(SER2MMS_HOME)/src/port/include
+
+# ===================== Подключение сторонних библиотек, =======================
+# ================ шаренных между самой библиотекой и примерами ================
+
+PERIPHERY_HOME = $(SER2MMS_HOME)/third/c-periphery
+
+ifndef USE_LIBIEC
+USE_LIBIEC = 1
+endif
+
+ifeq ($(USE_LIBIEC), 1)
+IEC61850_HOME = $(SER2MMS_HOME)/../mylibiec61850_2
+LIB_INC_DIRS += $(IEC61850_HOME)/include
+endif
+
+CFLAGS += -DUSE_LIBIEC=$(USE_LIBIEC)

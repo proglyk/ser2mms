@@ -1,6 +1,6 @@
 /**
   * @file   ser2mms.h
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   28-September-2025
   */
 
@@ -12,6 +12,7 @@
 #include "ser.h"
 #include "mms_if.h"
 #include "types.h"
+#include "port_rs485_init.h"
 
 #define S2M_SLAVE                       MODE_SLAVE
 #define S2M_POLL                        MODE_POLL
@@ -65,6 +66,13 @@ void ser2mms_set_cmd(s2m_t *, u32_t);
   * @param  id - New value of 'id'
   */
 void ser2mms_set_id(s2m_t *, u32_t);
+
+/**
+  * @brief  Top layer's 'id' field setter
+  * @param  self - Pointer to the object itself
+  * @retval Opaaue pointer to IED server instance
+  */
+void *ser2mms_get_ied(s2m_t *);
 
 
 /* void *mb__get_ser_h(mb_t *);

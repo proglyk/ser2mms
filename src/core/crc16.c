@@ -1,6 +1,6 @@
 /**
   * @file   crc16.c
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   29-September-2025
   */
 

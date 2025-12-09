@@ -1,6 +1,6 @@
 /**
   * @file   transp.h
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   30-September-2025
   */
 

@@ -1,6 +1,6 @@
 /**
   * @file   ser.c
-  * @author Ilia Proniashin, mail@proglyk.ru
+  * @author Ilia Proniashin, msg@proglyk.ru
   * @date   30-September-2025
   */
 
@@ -32,7 +32,9 @@ struct ser_s {
   u8_t          ds;
   u8_t          page;
   u16_t         cargvalue2[SER_PAGE_SIZE];
+#if (!S2M_REDUCED)
   prm_t         subsprm2[SER_NUM_SUBS];
+#endif
   u16_t         answ_buf[SER_ANSW_SIZE];
   u32_t         answ_len;
   carg_fn_t     carg_fn;
@@ -286,6 +288,7 @@ static void process_pld(ser_t self)
     // Заполняем поля структуры значениями буфера
     // указатель байта в начальное состояние
     // Параметр [0..10]
+#if (!S2M_REDUCED)  
     for (u32_t i=0; i<SER_NUM_SUBS; i++) {
       //printf("[process_pld] iter   pos is %03d\n", *pos);
       self->subsprm2[i].sl = (s32_t)B_TO_S( buf[*pos], buf[*pos+1] );
@@ -298,8 +301,10 @@ static void process_pld(ser_t self)
     }
     //printf("[process_pld] finish pos is %03d\n", *pos);
     // пробегаемся по всем 11 полям
-    if (self->subs_fn)
+    if (self->subs_fn && (SER_NUM_SUBS>0)) {
       self->subs_fn( self->pld_api, self->subsprm2, SER_NUM_SUBS );
+    }
+#endif //SER_NUM_SUBS
   }
 }
 
@@ -321,7 +326,7 @@ static void compose_pld(ser_t self)
   switch (self->mode)
   {
     case MODE_POLL: {
-      printf("[compose_pld] *size:%02d (#1)\r\n", *size);
+      printf("[compose_pld] *size:%02d (#1)\n", *size);
       // Вызываем функцию для записи в поля текущ. страницы
       if (self->carg_fn)
         self->carg_fn( self->pld_api, self->cargvalue2, SER_PAGE_SIZE,
@@ -331,9 +336,11 @@ static void compose_pld(ser_t self)
         S_TO_PB((buf+*size), self->cargvalue2[i]);
         *size += 2;
       }
+#if (!S2M_REDUCED)
       // Вызываем функцию для записи в поля подписок
-      if (self->subs_fn)
+      if (self->subs_fn) {
         self->subs_fn( self->pld_api, self->subsprm2, SER_NUM_SUBS );
+      }
       // бежим по подпискам
       for (u32_t i=0; i<SER_NUM_SUBS; i++) {
         S_TO_PB(buf+*size, (s16_t)(self->subsprm2[i].sl & 0xffff));
@@ -343,6 +350,7 @@ static void compose_pld(ser_t self)
         S_TO_PB(buf+*size, (s16_t)(self->subsprm2[i].pul[1] & 0xffff));
         *size += 2;
       }
+#endif //SER_NUM_SUBS
       //printf("[compose_pld] *pos:%02d (#3)\r\n", *pos);
     } break;
     
@@ -378,40 +386,6 @@ static void compose_pld(ser_t self)
         // buf[*pos++] = 0;
       }
     } break;
-  }
-  
-  if (self->mode == MODE_POLL) {
-    printf("[compose_pld] *size:%02d (#1)\r\n", *size);
-    // Вызываем функцию для записи в поля датасетов
-    if (self->carg_fn)
-      self->carg_fn( self->pld_api, self->cargvalue2, SER_PAGE_SIZE,
-                      self->ds, self->page );
-    
-    // бежим по странице
-    for (u32_t i=0; i<SER_PAGE_SIZE; i++) {
-      S_TO_PB((buf+*size), self->cargvalue2[i]);
-      *size += 2;
-    }
-    
-    //printf("[compose_pld] *pos:%02d (#2)\r\n", *pos);
-    
-    // Вызываем функцию для записи в поля подписок
-    if (self->subs_fn)
-      self->subs_fn( self->pld_api, self->subsprm2, SER_NUM_SUBS );
-    
-    // бежим по подпискам
-    for (u32_t i=0; i<SER_NUM_SUBS; i++) {
-      S_TO_PB((buf+*size), (s16_t)(self->subsprm2[i].sl & 0xffff));
-      //S_TO_PB(&buf[*pos], (s16_t)(self->subsprm2[i].sl & 0xffff));
-      *size += 2;
-      I_TO_PB(buf+*size, self->subsprm2[i].pul[0]);
-      *size += 4;
-      S_TO_PB(buf+*size, (s16_t)(self->subsprm2[i].pul[1] & 0xffff));
-      *size += 2;
-    }
-    //printf("[compose_pld] *pos:%02d (#3)\r\n", *pos);
-  } else {
-
   }
 }
 
