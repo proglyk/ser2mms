@@ -25,7 +25,7 @@
 #define LINUX_HW_IMPL_WSL               WSL
 #define LINUX_HW_IMPL_ARM               ARM
 
-// // Возможные значения USE_LIBIEC
+// // Возможные значения LIBIEC
 // #define LINUX                           (1)
 // // C префиксами для ясности:
 // #define PORT_IMPL_LINUX                 LINUX

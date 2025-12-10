@@ -10,13 +10,13 @@ LIB_INC_DIRS += $(SER2MMS_HOME)/src/port/include
 
 PERIPHERY_HOME = $(SER2MMS_HOME)/third/c-periphery
 
-ifndef USE_LIBIEC
-USE_LIBIEC = 1
+ifndef LIBIEC
+LIBIEC = 1
 endif
 
-ifeq ($(USE_LIBIEC), 1)
-IEC61850_HOME = $(SER2MMS_HOME)/../mylibiec61850_2
+ifeq ($(LIBIEC), 1)
+IEC61850_HOME = $(SER2MMS_HOME)/../mylibiec61850_3
 LIB_INC_DIRS += $(IEC61850_HOME)/include
 endif
 
-CFLAGS += -DUSE_LIBIEC=$(USE_LIBIEC)
+CFLAGS += -DLIBIEC=$(LIBIEC)

@@ -95,6 +95,7 @@ void *transp_init(__UNUSED int argc, __UNUSED int *pdata, __UNUSED void *argv,
   // top layer
   self->ser = ser_new(mode, fn1, fn2, fn3, pld_api);
   if (!self->ser) goto error_4;
+  ser_set_cmd(self->ser, 1);
   
   printf("[transp_init]\n");
   // возвращаем указат для дальнейшего исп.-ния
@@ -153,14 +154,16 @@ int transp_poll(transp_t *tp)
   ev_type_t type;
   bool sta = false;
   s32_t rc;
+  static u32_t counter = 0;
   
-  //printf("[mb_tp__poll] tp->recv_sta is %d\r\n", tp->recv_sta);
+  //printf("[mb_tp__poll] tp->recv_sta is %d\n", tp->recv_sta);
+  //printf("[mb_tp__poll] tp->xmit_sta is %d\n", tp->xmit_sta);
   
   // Polling
   rs485_poll(tp->stty);
-  if (tp->mode == MODE_SLAVE) {
+  // if (tp->mode == MODE_SLAVE) {
     tmr__poll(tp->tmr);
-  }
+  // }
   
   // Try to get rcvd event. If threads used blocking when no event avalialable  
   if (tp->mode == MODE_SLAVE) {
@@ -175,6 +178,10 @@ int transp_poll(transp_t *tp)
           if (rc) {
             printf("[transp_poll] MB isn't ok\r\n");
           } else {
+            msg_pack(tp);
+            tp->xmit_sta = XMIT_ACT;
+            rs485_ena(tp->stty, false, true);
+            //ev_post( tp->ev_rcvd, EV_SENT );
             printf("[transp_poll] MB is ok\r\n");
           }
 #endif //S2M_DEBUG
@@ -186,6 +193,7 @@ int transp_poll(transp_t *tp)
         } break;
         
         case EV_SENT: {
+          
           // eMBRTUSend()
           //tp->xmit_sta = XMIT_ACT;
           //rs485_ena(tp->stty, false, true);
@@ -198,8 +206,27 @@ int transp_poll(transp_t *tp)
   }
     
   if (tp->mode == MODE_POLL) {
+    sta = ev_get(tp->ev_rcvd, &type);
+    if (sta) {
+      printf("[mb_tp__poll] sta_ev_rcvd is %d\n", sta);
+      if (type == EV_RCVD) {
+        rc = msg_unpack(tp);
+#if (S2M_DEBUG)
+        if (rc) printf("[transp_poll] MB isn't ok\n");
+        else printf("[transp_poll] MB is ok\n");
+#endif //S2M_DEBUG
+      } else {
+        printf("[transp_poll] type is unknown\n");
+      }
+    }
+    if (counter >= 4) {
+      ev_post( tp->ev_xmit, EV_SENT );
+      counter=0;
+    } else counter++;
+    
     sta = ev_get(tp->ev_xmit, &type);
     if (sta) {
+      printf("[mb_tp__poll] sta_ev_xmit is %d\n", sta);
       switch ( type ) {
         case EV_RCVD: {
 
@@ -293,7 +320,7 @@ static void recv(void *opaque)
   
   rc = rs485_get(self->stty, &byte);
   if (rc) {
-    //printf("[recv] Received: %#X\r\n", byte);
+    printf("[recv] Received: %#X\n", byte);
     switch ( self->recv_sta )
     {
       case RECV_INIT: {

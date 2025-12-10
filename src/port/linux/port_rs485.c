@@ -250,10 +250,11 @@ void rs485_poll(rs485_t self)
   
   if (self->sta_ena_rx) {
     if ( !receive(self->fd, self->rcvd_buf, RCVD_BUF_SIZE, &rcvd) ) {
-      //perror("[rs485_poll] Nothing to read");
+      //printf("[rs485_poll] Nothing to read\n");
       return;
     }
     if (rcvd > 0) {
+      printf("[rs485_poll] rcvd>0\n");
       for( i = 0; i < rcvd; i++ ) {
         /* Call the modbus stack and let him fill the buffers. */
         if (self->fn_rcv) self->fn_rcv(self->fn_pld);
@@ -299,8 +300,8 @@ static bool receive(fd_t fd, u8_t *buf, u32_t size, u32_t *rcvd)
   struct timeval tv;
   ssize_t        rc;
   
-  tv.tv_sec = 0; //1;
-  tv.tv_usec = 50000;
+  tv.tv_sec = 1; //1;
+  tv.tv_usec = 0;//50000;
   FD_ZERO( &rfds );
   FD_SET( fd, &rfds );
   

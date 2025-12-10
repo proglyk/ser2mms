@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <time.h>
 
 
 static void write_carg_slave( void *, u16_t *, u32_t, u8_t, u8_t );
@@ -328,33 +329,51 @@ static void write_subs_slave( void *opaque, prm_t *subs_buf,
   * @param dataset: Номер текущего датасета посылки.
   * @param cargpage: Номер текущей страницы каретки.
   * @param ptr: Указатель на структуру со значениями из посылки.
-  * @retval none: Нет */
+  */
 static void read_answ_slave( void *argv, u16_t *answ_buf, u32_t *answ_len )
 {
-  // DataAttribute *data_attr;
-  // f32_t ftemp;
   u32_t cnt = 0;
-  
   (void)argv;
-  (void)answ_buf;
+  // (void)answ_buf;
+  // (void)answ_len;
+
+#if (S2M_USE_LIBIEC==1)
+  DataAttribute *data_attr;
+  f32_t ftemp;
+  u16_t ustemp;
   
-/*   // Iz
+  // Iz
   data_attr = (DataAttribute*)IEDMODEL_UPG_GGIO0_Iz_mag_f;
   ftemp = MmsValue_toFloat(data_attr->mmsValue);
-  ftemp *= 1.0f;
   answ_buf[cnt++] = (u16_t)((s32_t)ftemp & 0x0000ffff);
-
   // Rlz
   data_attr = (DataAttribute*)IEDMODEL_UPG_GGIO0_Rlz_mag_f;
   ftemp = MmsValue_toFloat(data_attr->mmsValue);
-  ftemp *= 1.0f;
   answ_buf[cnt++] = (u16_t)((s32_t)ftemp & 0x0000ffff);
-
   // usCirc
   data_attr = (DataAttribute*)IEDMODEL_UPG_GGIO0_Circ_mag_i;
-  self->outdata.usCirc = (u16_t)(MmsValue_toInt32(data_attr->mmsValue) & 
-    0x0000ffff);
   answ_buf[cnt++] = (u16_t)( MmsValue_toInt32(data_attr->mmsValue) & 0x0000ffff );
-     */
+  
   *answ_len = cnt;
+#else
+  answ_buf[cnt++] = 1;
+  answ_buf[cnt++] = 2;
+  answ_buf[cnt++] = 3;
+  *answ_len = cnt;
+#endif
+}
+
+void ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
+{
+  assert(epoch && usec);
+#if (PORT_IMPL==PORT_IMPL_LINUX)
+  struct timespec tspec;
+  clock_gettime(CLOCK_REALTIME, &tspec);
+  *epoch = tspec.tv_sec;
+  *usec  = tspec.tv_nsec / 1000000;
+#elif (PORT_IMPL==PORT_IMPL_ARM)
+  GET_SYSTEM_TIME((timestamp+0),(timestamp+1));
+#else
+#error Macro 'PORT_IMPL' definition is needed
+#endif
 }

@@ -128,6 +128,11 @@ void *ser2mms_get_ied(s2m_t *self)
   return self->ied;
 }
 
+void __WEAK ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
+{
+  
+}
+
 #if 0
 void *mb__get_ser_h(s2m_t *self)
 {

@@ -18,6 +18,8 @@
 #define S2M_POLL                        MODE_POLL
 #define S2M_SET_ATTR                    MMS_SET_ATTR
 
+#define S2M_GET_TIME                    ser_get_time
+
 typedef struct ser2mms_s ser2mms_t;
 typedef ser2mms_t        s2m_t;
 //typedef topmode_t        s2m_mode_t;
@@ -73,6 +75,13 @@ void ser2mms_set_id(s2m_t *, u32_t);
   * @retval Opaaue pointer to IED server instance
   */
 void *ser2mms_get_ied(s2m_t *);
+
+/**
+ * @brief Получение системного времени (тело функции реализуется пользователем)
+ * @param epoch Место под размещение времени в формате epoch-time
+ * @param usec Место под размещение микросекундной части
+ */
+void ser_get_time(uint32_t *epoch, uint32_t *usec);
 
 
 /* void *mb__get_ser_h(mb_t *);

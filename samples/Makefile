@@ -11,8 +11,8 @@ LIB_PERIPHERY = $(PERIPHERY_HOME)/periphery.a
 LDFLAGS = $(LIB_SER2MMS) $(LIB_PERIPHERY)
 
 # Conditionally connected libiec61850
-ifeq ($(USE_LIBIEC), 1)
-LIB_IEC61850 = $(IEC61850_HOME)/bin/mylibiec61850.a
+ifeq ($(LIBIEC), 1)
+LIB_IEC61850 = $(IEC61850_HOME)/bin/libiec61850.a
 LIBASN1  := $(IEC61850_HOME)/third/ASN1/bin/asn1.a
 LIB8823  := $(IEC61850_HOME)/third/ISO8823/bin/iso8823.a
 LIB8650  := $(IEC61850_HOME)/third/ISO8650/bin/iso8650.a

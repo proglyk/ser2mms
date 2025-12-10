@@ -286,8 +286,8 @@ static void handler_sigint(int sig)
   
   switch ( sig ) {
     case SIGINT:
-      ser2mms_set_id(s2m, id++);
-      // s2m_set_cmd(s2m, mode ^= 1);
+      //ser2mms_set_id(s2m, id++);
+      ser2mms_set_cmd(s2m, mode ^= 1);
       //printf("[sig] mode=%01d\n", id);
       //mb__test_recv(mb__inst());
     break;

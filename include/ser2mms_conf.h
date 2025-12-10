@@ -28,8 +28,8 @@
 #define S2M_USE_TRANSP_TCP              (0)
 
 // Use real libiec or imitate this one
-#ifdef USE_LIBIEC
-#define S2M_USE_LIBIEC                  USE_LIBIEC
+#ifdef LIBIEC
+#define S2M_USE_LIBIEC                  LIBIEC
 #else
 #define S2M_USE_LIBIEC                  (1)
 #endif
@@ -55,7 +55,7 @@
 #define SER_MIN_PAGE_IDX                (0)
 #define SER_MAX_PAGE_IDX                (3)
 #define SER_PAGE_SIZE                   (3)
-#define IN_MSG_SIZE_POLL                (8)
+#define IN_MSG_SIZE_POLL                (11)
 #define SER_ANSW_SIZE                   (3)
 
 #define S2M_TRANSP_TIMEOUT              (250) // время ожидания на прием, мс
