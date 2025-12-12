@@ -15,7 +15,7 @@ LIBIEC = 1
 endif
 
 ifeq ($(LIBIEC), 1)
-IEC61850_HOME = $(SER2MMS_HOME)/../mylibiec61850_3
+IEC61850_HOME = $(SER2MMS_HOME)/../mylibiec61850
 LIB_INC_DIRS += $(IEC61850_HOME)/include
 endif
 

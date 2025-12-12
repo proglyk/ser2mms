@@ -49,25 +49,25 @@ int main(void)
   s2m = ser2mms_new(NULL, write_carg_poll, write_subs_poll, read_answ_poll, 
                     S2M_POLL, 12, 
                     (void *)&s2m_stty_init);
-  assert(s2m);
+  if (!s2m) {
+    perror("[main] Can't create s2m inst");
+    exit(1);
+  }
   
   // run
   ser2mms_run(s2m);
-  printf("Runned\r\n");
   
   // loop
   do {
     printf( "> " );
     symb = getchar();
     switch (symb) {
-      case 'a': printf("fuck you\r\n"); break;
       case 'q': runned = false; break;
     }
   } while( runned );
   
   // close
   ser2mms_stop(s2m);
-  printf("Stopped\r\n");
   return 0; 
 }
 

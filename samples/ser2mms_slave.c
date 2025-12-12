@@ -5,12 +5,6 @@
   */
 
 #include "ser2mms.h"
-#include "port_can.h"
-#include "port_pps.h"
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-#include "gpio.h"
-#include "port_thread.h"
-#endif
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -22,18 +16,13 @@
 static void write_carg_slave( void *, u16_t *, u32_t, u8_t, u8_t );
 static void write_subs_slave( void *, prm_t *, u32_t );
 static void read_answ_slave( void *, u16_t *, u32_t * );
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-static void *sample(void *arg);
-#endif
 
 
+// Temporary variable
 volatile bool runned = true;
+// Instance
 static s2m_t *s2m = NULL;
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-static gpio_t *gpio;
-static thread_t thread;
-#endif
-
+// tty config
 static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
@@ -59,37 +48,13 @@ int main(void)
   s2m = ser2mms_new(NULL, write_carg_slave, write_subs_slave, read_answ_slave, 
                     S2M_SLAVE, 12, 
                     (void *)&s2m_stty_init);
-  assert(s2m);
-  
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  pps_t pps = pps_new();
-  if (!pps) printf("[main] pps=null\r\n");
-  
-  if (pps_run(pps) < 0) {
-    printf("[main] can't run pps\r\n");
-    pps_destroy(pps);
+  if (!s2m) {
+    perror("[main] Can't create s2m inst");
     exit(1);
   }
-
-  // can_t can_ptr = can_new("can1", 0);
-  // assert(can_ptr);
-
-  gpio = gpio_new();
-  if (gpio_open(gpio, "/dev/gpiochip0", 13, GPIO_DIR_OUT) < 0) {
-    perror("Gpio");
-    exit(1);
-  }
-#endif
 
   // run
   ser2mms_run(s2m);
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  thread = thread_new((const u8_t *)"sample", sample, NULL);
-  if (!thread) {
-    perror("Thread");
-    exit(1);
-  }
-#endif
   
   // loop
   do {
@@ -101,14 +66,7 @@ int main(void)
   } while( runned );
   
   // close
-  //dio__deinit(gpio0_30);
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  // can_del(can_ptr);
-  pps_stop(pps);
-  pps_destroy(pps);
-#endif
   ser2mms_stop(s2m);
-  printf("Stopped\n");
   return 0; 
 }
 
@@ -402,42 +360,3 @@ void ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
 #error Macro 'PORT_IMPL' definition is needed
 #endif
 }
-
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-
-#define PERIOD_NS        5000000000L // 0.5 second
-#include <unistd.h>
-/**
- * @brief 1PPS generation thread function
- */
-static void *sample(void *arg)
-{
-  pps_t self = (pps_t)arg;
-  // struct timespec ts;
-
-  // ts.tv_sec = 0;
-  // ts.tv_nsec = 5000000000L;
-  
-  while (runned) {
-    // Set HIGH
-    if (gpio_write(gpio, true) < 0) {
-      fprintf(stderr, "pps: gpio_write(HIGH) failed\n");
-      break;
-    }
-    //nanosleep(&ts, NULL);
-    sleep(1);
-    // Set LOW
-    if (gpio_write(gpio, false) < 0) {
-      fprintf(stderr, "pps: gpio_write(LOW) failed\n");
-      break;
-    }
-    //nanosleep(&ts, NULL);
-    sleep(1);
-    printf("[sample] Tick\n");
-  }
-  
-  thread_exit();
-  return NULL;
-}
-
-#endif

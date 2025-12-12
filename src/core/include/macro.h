@@ -23,7 +23,7 @@
                                           (p)[1] = (u8_t)((b) & 0x00ff); \
                                         } while(0)
 
-// Short TO swapped Byte* (s16_t => s8_t*)
+// Short TO swapped Byte*
 #define S_TO_swPB(p,b)                  do { \
                                           (p)[1] = (u8_t)(((b) & 0xff00)>>8); \
                                           (p)[0] = (u8_t)((b) & 0x00ff); \
@@ -35,6 +35,14 @@
                                     (p)[1] = (u8_t)(((i) & 0x00FF0000) >> 16); \
                                     (p)[2] = (u8_t)(((i) & 0x0000FF00) >> 8);  \
                                     (p)[3] = (u8_t)((i) & 0x000000FF); \
+                                  } while(0)
+
+// Int TO swapped Byte*
+#define I_TO_swPB(p,i)            do { \
+                                    (p)[3] = (u8_t)(((i) & 0xFF000000) >> 24); \
+                                    (p)[2] = (u8_t)(((i) & 0x00FF0000) >> 16); \
+                                    (p)[1] = (u8_t)(((i) & 0x0000FF00) >> 8);  \
+                                    (p)[0] = (u8_t)((i) & 0x000000FF); \
                                   } while(0)
                     
 #define SUB_TO_DS(a)                    (((a) >> 4) & 0x0f)

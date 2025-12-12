@@ -29,7 +29,7 @@ typedef enum {
 } recv_sta_t;
 
 typedef enum {
-  XMIT_INIT, XMIT_IDLE, XMIT_ACT, XMIT_ERR
+  XMIT_INIT, XMIT_IDLE, XMIT_ACT, XMIT_NREDE, XMIT_ERR
 } xmit_sta_t;
 
 struct transp_s
@@ -95,7 +95,7 @@ void *transp_init(__UNUSED int argc, __UNUSED int *pdata, __UNUSED void *argv,
   // top layer
   self->ser = ser_new(mode, fn1, fn2, fn3, pld_api);
   if (!self->ser) goto error_4;
-  ser_set_cmd(self->ser, 1);
+  //ser_set_cmd(self->ser, 1);
   
   printf("[transp_init]\n");
   // возвращаем указат для дальнейшего исп.-ния
@@ -128,7 +128,7 @@ void transp_del(__UNUSED int argc, void *opaque)
   rs485_del(self->stty);
   ev_del(self->ev_rcvd);
   ev_del(self->ev_xmit);
-  ser_del(self->ser);
+  ser_destroy(self->ser);
   
 #if S2M_USE_STATIC
   _self_is_used = 0;
@@ -206,23 +206,23 @@ int transp_poll(transp_t *tp)
   }
     
   if (tp->mode == MODE_POLL) {
-    sta = ev_get(tp->ev_rcvd, &type);
-    if (sta) {
-      printf("[mb_tp__poll] sta_ev_rcvd is %d\n", sta);
-      if (type == EV_RCVD) {
-        rc = msg_unpack(tp);
-#if (S2M_DEBUG)
-        if (rc) printf("[transp_poll] MB isn't ok\n");
-        else printf("[transp_poll] MB is ok\n");
-#endif //S2M_DEBUG
-      } else {
-        printf("[transp_poll] type is unknown\n");
-      }
-    }
-    if (counter >= 4) {
-      ev_post( tp->ev_xmit, EV_SENT );
-      counter=0;
-    } else counter++;
+//     sta = ev_get(tp->ev_rcvd, &type);
+//     if (sta) {
+//       printf("[mb_tp__poll] sta_ev_rcvd is %d\n", sta);
+//       if (type == EV_RCVD) {
+//         rc = msg_unpack(tp);
+// #if (S2M_DEBUG)
+//         if (rc) printf("[transp_poll] MB isn't ok\n");
+//         else printf("[transp_poll] MB is ok\n");
+// #endif //S2M_DEBUG
+//       } else {
+//         printf("[transp_poll] type is unknown\n");
+//       }
+//     }
+    // if (counter >= 4) {
+    //   ev_post( tp->ev_xmit, EV_SENT );
+    //   counter=0;
+    // } else counter++;
     
     sta = ev_get(tp->ev_xmit, &type);
     if (sta) {
@@ -358,6 +358,7 @@ static void xmit(void *opaque)
 {
   transp_t  *self = (transp_t *)opaque;
   buf_xmit_t pbuf;
+  static int count = 0;
   
   assert(self);
   pbuf = GET_XMIT(self->ser);
@@ -374,9 +375,14 @@ static void xmit(void *opaque)
       if ( pbuf->pos < pbuf->size ) {
         rs485_put( self->stty, pbuf->buf[pbuf->pos++] );
       } else {
-        self->xmit_sta = XMIT_IDLE;
-        rs485_ena(self->stty, true, false);
+        rs485_ena_wait(self->stty, false);
+        self->xmit_sta = XMIT_NREDE;
       }
+    } break;
+
+    case XMIT_NREDE: {
+      rs485_ena(self->stty, true, false);
+      self->xmit_sta = XMIT_IDLE;
     } break;
     
     case XMIT_ERR: {
@@ -441,12 +447,13 @@ static s32_t msg_unpack(transp_t *self)
   // Check for valid CRC
   u16_t crc = crc16(pbuf->buf, pbuf->size-2);
 #if (CRC_YURA)&&(!CRC_MODBUS)
-  if (crc != B_TO_S( pbuf->buf[pbuf->size-2], pbuf->buf[pbuf->size-1] )) {
+  if (crc != B_TO_S( pbuf->buf[pbuf->size-2], pbuf->buf[pbuf->size-1] ))
 #elif (CRC_MODBUS)&&(!CRC_YURA)
-  if (crc != B_TO_S( pbuf->buf[pbuf->size-1], pbuf->buf[pbuf->size-2] )) {
+  if (crc != B_TO_S( pbuf->buf[pbuf->size-1], pbuf->buf[pbuf->size-2] ))
 #else
 #error "Please define any CRC type"
 #endif
+  {
     printf("[msg_unpack] CRC is wrong\r\n");
     return -1;
   }

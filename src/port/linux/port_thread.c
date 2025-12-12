@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // Макрос PORT_USE_STATIC должен быть выкл. т.к. библиотека 'c-periphery' 
 // не поддерживает статичной аллокации
@@ -70,4 +71,16 @@ s32_t thread_kill( thread_t self, s32_t sig )
 void thread_exit( void )
 {
   return pthread_exit(NULL);
+}
+
+/**
+  * @brief Sleep
+  */
+void thread_sleep(u32_t ms)
+{
+  struct timespec tspec;
+  if (ms < 1) ms = 1;
+  tspec.tv_sec = ms / 1000;
+  tspec.tv_nsec = (ms % 1000)*1000000;
+  nanosleep(&tspec, NULL);
 }

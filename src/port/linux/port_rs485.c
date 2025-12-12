@@ -11,20 +11,21 @@
 #include "port_rs485.h"
 #include "port_rs485_init.h"
 #include "port_alloc.h"
+#include "port_thread.h"
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
 #include "gpio.h"
 #endif
-#include <unistd.h>
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <termios.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/select.h>
-#include <fcntl.h>
-#include <termios.h>
-#include <assert.h>
-#include <errno.h>
+#include <unistd.h>
 
 // Макрос RS485_USE_STATIC должен быть выкл. т.к. библиотека 'c-periphery' 
 // не поддерживает статичной аллокации
@@ -46,11 +47,15 @@ struct rs485_s {
   void  *fn_pld;
   
   bool  sta_ena_tx;
+  bool  sta_send_tx;
+  bool  sta_wait_tx;
   u8_t  xmit_buf[XMIT_BUF_SIZE];
   u32_t xmit_size;
   fn_t  fn_xmt;
+
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
   gpio_t *nre_de;
+  // dir_t   dir;
 #endif
 };
 
@@ -146,8 +151,8 @@ rs485_t rs485_new(void *init, rs485_fn_t *fn)
   if (pinit->gpio_path) {
     int32_t rc = nre_de_init(self, pinit->gpio_path, pinit->gpio_pin);
     if (rc) {
-      rs485_del(self);
-      return NULL;
+      perror("Error while init nre_de");
+      goto exit_1;
     }
   }
 #endif
@@ -199,10 +204,24 @@ void rs485_ena(rs485_t self, bool ena_rx, bool ena_tx)
     self->rcvd_pos = 0;
   }
   
-  self->sta_ena_tx = ena_tx;
+  
   if (ena_tx) {
+    self->sta_ena_tx = true;
+    self->sta_send_tx = true;
+    self->sta_wait_tx = false;
     self->xmit_size = 0;
+  } else {
+    self->sta_ena_tx = false;
+    self->sta_send_tx = false;
+    self->sta_wait_tx = false;
   }
+}
+
+void rs485_ena_wait(rs485_t self, __UNUSED bool wait_tx)
+{
+  assert(self);
+  self->sta_send_tx = false;
+  self->sta_wait_tx = true;
 }
 
 /**
@@ -264,26 +283,35 @@ void rs485_poll(rs485_t self)
   }
   
   if (self->sta_ena_tx) {
-    
-    while (self->sta_ena_tx) {
+    //
+    if (self->sta_send_tx && !self->sta_wait_tx) {
+      while (self->sta_send_tx) {
+        if (self->fn_xmt) self->fn_xmt(self->fn_pld);
+      }
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+      if (self->nre_de) {
+        int rc = nre_de_set(self, DIR_OUT);
+        // if (rc) printf("[rs485_ena] can't set DIR_OUT nre_de\n");
+        // self->dir = DIR_OUT;
+        printf("[rs485_ena] Has set DIR_OUT nre_de\n");
+      }
+#endif
+      if (!transmit(self->fd, self->xmit_buf, self->xmit_size)) {
+        perror("Сan't send the frame completely");
+      }
+    }
+    //
+    else if (self->sta_wait_tx && !self->sta_send_tx) {
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+      thread_sleep(PORT_RS485_DE_WAIT);
+      if (self->nre_de) {
+        int rc = nre_de_set(self, DIR_IN);
+        // if (rc) printf("[rs485_ena] can't set DIR_IN nre_de\n");
+        printf("[rs485_ena] Has set DIR_IN nre_de\n");
+      }
+#endif
       if (self->fn_xmt) self->fn_xmt(self->fn_pld);
     }
-/*     printf("[rs485_poll] xmit.size=%02d\r\n", self->xmit_size);
-    printf("[rs485_poll] xmit.buf=%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x\r\n",
-      self->xmit_buf[0], self->xmit_buf[1], self->xmit_buf[2], self->xmit_buf[3],
-      self->xmit_buf[4], self->xmit_buf[5], self->xmit_buf[6], self->xmit_buf[7],
-      self->xmit_buf[8], self->xmit_buf[9]); */
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-    if (self->nre_de)
-      nre_de_set(self, DIR_OUT);
-#endif
-    if (!transmit(self->fd, self->xmit_buf, self->xmit_size)) {
-      perror("Сan't send the frame completely");
-    }
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-    if (self->nre_de)
-      nre_de_set(self, DIR_IN);
-#endif
   }
 }
 
@@ -300,8 +328,8 @@ static bool receive(fd_t fd, u8_t *buf, u32_t size, u32_t *rcvd)
   struct timeval tv;
   ssize_t        rc;
   
-  tv.tv_sec = 1; //1;
-  tv.tv_usec = 0;//50000;
+  tv.tv_sec = 0; //1;
+  tv.tv_usec = 25000;
   FD_ZERO( &rfds );
   FD_SET( fd, &rfds );
   
@@ -370,6 +398,8 @@ static s32_t nre_de_init(rs485_t self, const char *path, u32_t line)
     goto exit_1;
   }
   
+  printf( "[nre_de_init] sucsefl inited\n");
+  
   return 0;
   
   exit_1:
@@ -399,7 +429,7 @@ static s32_t nre_de_set(rs485_t self, dir_t direction)
 {
   if (!self) return -1;
   //self->de_dir = direction;
-  return gpio_write(self->nre_de, direction ? false : true);
+  return gpio_write(self->nre_de, (direction==DIR_IN) ? false : true);
   //return gpio_write(self->nre_de, true);
 }
 

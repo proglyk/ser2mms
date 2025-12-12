@@ -41,7 +41,7 @@
 // Отладочный вывод
 #define S2M_DEBUG                       (1)
 // Без подписок (сокращенный режим)
-#define S2M_REDUCED                     (1)
+#define S2M_REDUCED                     (0)
 
 // Настройки для модуля 'ser'
 #if (S2M_REDUCED==1)
@@ -50,6 +50,7 @@
 #define SER_NUM_SUBS                    (11)
 #define IN_MSG_SIZE_SLAVE               (100) //рабочее
 #endif //S2M_REDUCED
+
 #define SER_MIN_DS_IDX                  (1)
 #define SER_MAX_DS_IDX                  (6)
 #define SER_MIN_PAGE_IDX                (0)
@@ -58,6 +59,6 @@
 #define IN_MSG_SIZE_POLL                (11)
 #define SER_ANSW_SIZE                   (3)
 
-#define S2M_TRANSP_TIMEOUT              (250) // время ожидания на прием, мс
+#define S2M_TRANSP_TIMEOUT              (10) // время ожидания на прием, мс
 
 #endif //SER2MMS_CONF_H

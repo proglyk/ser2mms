@@ -36,7 +36,7 @@ void    rs485_ena(rs485_t, bool, bool);
 void    rs485_poll(rs485_t);
 bool    rs485_get(rs485_t, u8_t *);
 bool    rs485_put(rs485_t, u8_t);
-
+void    rs485_ena_wait(rs485_t self, bool wait_tx);
 // stm32
 //void   *rs485_get_h(rs485_t);
 

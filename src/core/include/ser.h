@@ -1,8 +1,8 @@
 /**
- * @file ser.h
- * @author Ilia Proniashin, msg@proglyk.ru
- * @date 30-September-2025
- */
+* @file ser.h
+* @author Ilia Proniashin, msg@proglyk.ru
+* @date 30-September-2025
+*/
 
 #ifndef SER2MMS_SER_H
 #define SER2MMS_SER_H
@@ -11,33 +11,36 @@
 #include "types.h"
 #include "port_types.h"
 
-// Отладочный вывод
-#define SER_DEBUG S2M_DEBUG
+// Allocation
+#define SER_USE_STATIC                  (0) //S2M_USE_STATIC
+
+// Debug output
+#define SER_DEBUG                       S2M_DEBUG
 
 //#define MB_SER_PDU_SIZE_MAX (16) // Maximum size of a Modbus RTU frame.
-#define REGS_NUM (125)
+#define REGS_NUM                        (125)
 
-// Размер таблицы (число) доступных для чтения и записи (R/W) регистров.
-#define MB_INPUT_SIZE REGS_NUM
-#define MB_HOLD_SIZE REGS_NUM
+// Table size (number) of registers available for read and write (R/W).
+#define MB_INPUT_SIZE                   REGS_NUM
+#define MB_HOLD_SIZE                    REGS_NUM
 
-// Размер буферов
-#define BUFSIZE (2*REGS_NUM)
+// Buffer size
+#define BUFSIZE                         (2*REGS_NUM)
 
 // Short names
-#define MB_RCV_BUF(S) (GET_RCVD(S)->buf)
-#define MB_RCV_POS(S) (GET_RCVD(S)->pos)
-#define MB_RCV_SIZE(S) (GET_RCVD(S)->size)
-#define MB_XMT_BUF(S) (GET_XMIT(S)->buf)
-#define MB_XMT_POS(S) (GET_XMIT(S)->pos)
-#define MB_XMT_SIZE(S) (GET_XMIT(S)->size)
+#define MB_RCV_BUF(S)                   (GET_RCVD(S)->buf)
+#define MB_RCV_POS(S)                   (GET_RCVD(S)->pos)
+#define MB_RCV_SIZE(S)                  (GET_RCVD(S)->size)
+#define MB_XMT_BUF(S)                   (GET_XMIT(S)->buf)
+#define MB_XMT_POS(S)                   (GET_XMIT(S)->pos)
+#define MB_XMT_SIZE(S)                  (GET_XMIT(S)->size)
 
 // Short names for func declarations
-//#define buf_t ser_buf_t // TODO слишком общно
+//#define buf_t ser_buf_t // TODO too generic
 
 // Short names for func declarations
-#define GET_RCVD(S) ser_get_buf_rcvd(S)
-#define GET_XMIT(S) ser_get_buf_xmit(S)
+#define GET_RCVD(S)                     ser_get_buf_rcvd(S)
+#define GET_XMIT(S)                     ser_get_buf_xmit(S)
 
 // Struct declaration
 struct ser_buf_s {
@@ -65,58 +68,58 @@ typedef struct ser_buf_s *ser_buf_t;
 typedef struct ser_s *ser_t;
 
 /**
- * @brief Создает новый экземпляр объекта 'struct ser_s'
- * @param mode Режим работы (MODE_POLL или MODE_SLAVE)
- * @param carg_cb Callback-функция обновления параметров/данных
- * @param subs_cb Callback-функция обновления параметров подписок
- * @param answ_cb Callback-функция генерации ответа
- * @param pld_api Указатель на контекст API полезной нагрузки
- * @retval Возвращает указатель на объект 'struct ser_s' и NULL если не удалось 
- * выделить память или объект уже используется (статичная аллокация)
- */
-ser_t ser_new(topmode_t mode, carg_fn_t carg_cb, subs_fn_t subs_cb, 
+* @brief Creates a new instance of 'struct ser_s' object
+* @param mode Operating mode (MODE_POLL or MODE_SLAVE)
+* @param carg_cb Callback function for updating parameters/data
+* @param subs_cb Callback function for updating subscription parameters
+* @param answ_cb Callback function for generating response
+* @param pld_api Pointer to payload API context
+* @retval Returns pointer to this instance or NULL if failed to
+* allocate memory or object is already in use (static allocation)
+*/
+ser_t ser_new(topmode_t mode, carg_fn_t carg_cb, subs_fn_t subs_cb,
               answ_fn_t answ_cb, void *pld_api);
 
 /**
- * @brief Уничтожает объект 'struct ser_s' и освобождает ресурсы
- * @param self Указатель на экземпляр обработчика
- */
-void ser_del(ser_t self);
+* @brief Destroys 'struct ser_s' object and releases resources
+* @param self Pointer to this instance
+*/
+void ser_destroy(ser_t self);
 
 /**
- * @brief Устанавливает тип команды для следующей передачи
- * @param self Указатель на экземпляр обработчика
- * @param value Значение команды (0 - CMD_PARAMETERS, ненулевое - CMD_TIMESET)
- */
+* @brief Sets command type for next transmission
+* @param self Pointer to this instance
+* @param value Command value (0 - CMD_PARAMETERS, non-zero - CMD_TIMESET)
+*/
 void ser_set_cmd(ser_t self, u32_t value);
 
 /**
- * @brief Разбирает принятое входящее сообщение и обрабатывает полезную нагрузку
- * @param self Указатель на экземпляр обработчика
- * @retval 0 при успехе
- * @retval -1 при ошибке (неверный размер, датасет или индекс страницы)
- */
+* @brief Parses received incoming message and processes payload
+* @param self Pointer to this instance
+* @retval 0 on success
+* @retval -1 on error (invalid size, dataset or page index)
+*/
 s32_t ser_in_parse(ser_t self);
 
 /**
- * @brief Формирует исходящее сообщение с заголовком и полезной нагрузкой для 
- * передачи
- * @param self Указатель на экземпляр обработчика
- */
+* @brief Builds outgoing message with header and payload for
+* transmission
+* @param self Pointer to this instance
+*/
 void ser_out_build(ser_t self);
 
 /**
- * @brief Возвращает указатель на структуру буфера приема
- * @param self Указатель на экземпляр обработчика
- * @retval buf_rcvd_t Указатель на буфер приема
- */
+* @brief Returns pointer to receive buffer structure
+* @param self Pointer to this instance
+* @retval buf_rcvd_t Pointer to receive buffer
+*/
 buf_rcvd_t ser_get_buf_rcvd(ser_t self);
 
 /**
- * @brief Возвращает указатель на структуру буфера передачи
- * @param self Указатель на экземпляр обработчика
- * @retval buf_xmit_t Указатель на буфер передачи
- */
+* @brief Returns pointer to transmit buffer structure
+* @param self Pointer to this instance
+* @retval buf_xmit_t Pointer to transmit buffer
+*/
 buf_xmit_t ser_get_buf_xmit(ser_t self);
 
 #endif
