@@ -7,6 +7,10 @@
 #include "ser2mms.h"
 #include "port_can.h"
 #include "port_pps.h"
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+#include "gpio.h"
+#include "port_thread.h"
+#endif
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -18,21 +22,28 @@
 static void write_carg_slave( void *, u16_t *, u32_t, u8_t, u8_t );
 static void write_subs_slave( void *, prm_t *, u32_t );
 static void read_answ_slave( void *, u16_t *, u32_t * );
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+static void *sample(void *arg);
+#endif
 
 
 volatile bool runned = true;
 static s2m_t *s2m = NULL;
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+static gpio_t *gpio;
+static thread_t thread;
+#endif
 
 static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
-//.device_path = "/dev/ttyUSB0",
-  .device_path = "/dev/ttyV1",
+  .device_path = "/dev/ttyUSB0",
+//.device_path = "/dev/ttyV1",
   .gpio_path   = NULL
 #elif (LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
   .device_path = "/dev/ttyS2",
   .gpio_path   = "/dev/gpiochip0",//"/dev/gpiochip3",
-  .gpio_pin    = 13//26
+  .gpio_pin    = 17 //P9_23
 #endif
 #else
 #error "Not available"
@@ -50,7 +61,6 @@ int main(void)
                     (void *)&s2m_stty_init);
   assert(s2m);
   
-// #if defined(LINUX)&&defined(ARM)
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
   pps_t pps = pps_new();
   if (!pps) printf("[main] pps=null\r\n");
@@ -60,16 +70,26 @@ int main(void)
     pps_destroy(pps);
     exit(1);
   }
+
+  // can_t can_ptr = can_new("can1", 0);
+  // assert(can_ptr);
+
+  gpio = gpio_new();
+  if (gpio_open(gpio, "/dev/gpiochip0", 13, GPIO_DIR_OUT) < 0) {
+    perror("Gpio");
+    exit(1);
+  }
 #endif
 
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  can_t can_ptr = can_new("can1", 0);
-  assert(can_ptr);
-#endif
-  
   // run
   ser2mms_run(s2m);
-  printf("Runned\n");
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+  thread = thread_new((const u8_t *)"sample", sample, NULL);
+  if (!thread) {
+    perror("Thread");
+    exit(1);
+  }
+#endif
   
   // loop
   do {
@@ -83,7 +103,7 @@ int main(void)
   // close
   //dio__deinit(gpio0_30);
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  can_del(can_ptr);
+  // can_del(can_ptr);
   pps_stop(pps);
   pps_destroy(pps);
 #endif
@@ -252,76 +272,81 @@ static void write_carg_slave( void *opaque, u16_t *carg_buf,
   * @param ptr: Указатель на структуру со значениями из посылки.
   * @retval none: Нет */
 static void write_subs_slave( void *opaque, prm_t *subs_buf, 
-                              __UNUSED u32_t subs_len )
+                        __UNUSED u32_t subs_len )
 {
-  // f32_t ftemp;
-  s2m_t *s2m = (s2m_t *)opaque;
-  assert(s2m);
+  f32_t ftemp;
+  // s2m_t *s2m = (s2m_t *)opaque;
+  // assert(s2m);
+  void *ied = ser2mms_get_ied((s2m_t *)opaque);
+  if (!ied) {
+    printf("[write_carg] Ptr to ied is null\n");
+    return;
+  }
   
   printf("[write_subs_slave] Value #1: %02d\r\n",  subs_buf[ 0].sl);
   printf("[write_subs_slave] Epoch #1: %010d\r\n", subs_buf[ 0].pul[0]);
   printf("[write_subs_slave] Usec  #1: %d\r\n",  subs_buf[ 0].pul[1]);
   
-  printf("[write_subs_slave] Epoch #2: %010d\r\n", subs_buf[ 1].pul[0]);
-  printf("[write_subs_slave] Epoch #3: %010d\r\n", subs_buf[ 2].pul[0]);
-  printf("[write_subs_slave] Epoch #4: %010d\r\n", subs_buf[ 3].pul[0]);
-  printf("[write_subs_slave] Epoch #5: %010d\r\n", subs_buf[ 4].pul[0]);
-  printf("[write_subs_slave] Epoch #6: %010d\r\n", subs_buf[ 5].pul[0]);
-  printf("[write_subs_slave] Epoch #7: %010d\r\n", subs_buf[ 6].pul[0]);
-  printf("[write_subs_slave] Epoch #8: %010d\r\n", subs_buf[ 7].pul[0]);
-  printf("[write_subs_slave] Epoch #9: %010d\r\n", subs_buf[ 8].pul[0]);
-  printf("[write_subs_slave] Epoch#10: %010d\r\n", subs_buf[ 9].pul[0]);
-  printf("[write_subs_slave] Epoch#11: %010d\r\n", subs_buf[10].pul[0]);
-  
-  
-/*   SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_ConnStatus_mag_i,     subs_buf[0].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_ConnStatus_t, (u32_t*)subs_buf[0].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_ConnStatus_q, true);
-  
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_HV_mag_i,     subs_buf[1].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_HV_t, (u32_t*)subs_buf[1].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_HV_q, true);
-  
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_LV_mag_i,     subs_buf[2].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_LV_t, (u32_t*)subs_buf[2].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_LV_q, true);
-  
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_Pause_mag_i,    subs_buf[3].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Pause_t, (u32_t*)subs_buf[3].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Pause_q, true);
-  
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_Protect1_mag_i,     subs_buf[4].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Protect1_t, (u32_t*)subs_buf[4].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Protect1_q, true);
-  
+  // printf("[write_subs_slave] Epoch #2: %010d\r\n", subs_buf[ 1].pul[0]);
+  // printf("[write_subs_slave] Epoch #3: %010d\r\n", subs_buf[ 2].pul[0]);
+  // printf("[write_subs_slave] Epoch #4: %010d\r\n", subs_buf[ 3].pul[0]);
+  // printf("[write_subs_slave] Epoch #5: %010d\r\n", subs_buf[ 4].pul[0]);
+  // printf("[write_subs_slave] Epoch #6: %010d\r\n", subs_buf[ 5].pul[0]);
+  // printf("[write_subs_slave] Epoch #7: %010d\r\n", subs_buf[ 6].pul[0]);
+  // printf("[write_subs_slave] Epoch #8: %010d\r\n", subs_buf[ 7].pul[0]);
+  // printf("[write_subs_slave] Epoch #9: %010d\r\n", subs_buf[ 8].pul[0]);
+  // printf("[write_subs_slave] Epoch#10: %010d\r\n", subs_buf[ 9].pul[0]);
+  // printf("[write_subs_slave] Epoch#11: %010d\r\n", subs_buf[10].pul[0]);
+
+#if (S2M_USE_LIBIEC==1)
+  // 0
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_ConnStatus_mag_i, subs_buf[0].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_ConnStatus_t, (u32_t*)subs_buf[0].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_ConnStatus_q,     true);
+  // 1
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_HV_mag_i, subs_buf[1].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_HV_t, (u32_t*)subs_buf[1].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_HV_q,     true);
+  // 2
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_LV_mag_i, subs_buf[2].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_LV_t, (u32_t*)subs_buf[2].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_LV_q,     true);
+  // 3
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Pause_mag_i,  subs_buf[3].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Pause_t, (u32_t*)subs_buf[3].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Pause_q,      true);
+  // 4
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Protect1_mag_i,  subs_buf[4].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Protect1_t, (u32_t*)subs_buf[4].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Protect1_q,      true);
   // 5
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_Protect2_mag_i,     subs_buf[5].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Protect2_t, (u32_t*)subs_buf[5].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Protect2_q, true);
-  
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Protect2_mag_i,  subs_buf[5].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Protect2_t, (u32_t*)subs_buf[5].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Protect2_q,      true);
   // 6
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_Ready_mag_i,     subs_buf[6].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Ready_t, (u32_t*)subs_buf[6].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Ready_q, true);
-
-  SET_ATTR(s32, p, IEDMODEL_UPG_GGIO0_Work_mag_i,     subs_buf[7].sl);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Work_t, (u32_t*)subs_buf[7].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Work_q, true);
-  
-  ftemp = (f32_t)subs_buf[8].sl
-  SET_ATTR(f32, p, IEDMODEL_UPG_GGIO0_Id_mag_f,     ftemp);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Id_t, (u32_t*)subs_buf[8].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Id_q, true);
-
-  ftemp = (f32_t)subs_buf[9].sl
-  SET_ATTR(f32, p, IEDMODEL_UPG_GGIO0_Rl_mag_f,     ftemp);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Rl_t, (u32_t*)subs_buf[9].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Rl_q, true);
-  
-  ftemp = (f32_t)subs_buf[10].sl
-  SET_ATTR(f32, p, IEDMODEL_UPG_GGIO0_Ud_mag_f,     ftemp);
-  SET_ATTR(t,   p, IEDMODEL_UPG_GGIO0_Ud_t, (u32_t*)subs_buf[10].pul);
-  SET_ATTR(q,   p, IEDMODEL_UPG_GGIO0_Ud_q, true);  */
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Ready_mag_i,  subs_buf[6].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Ready_t, (u32_t*)subs_buf[6].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Ready_q,      true);
+  // 7
+  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Work_mag_i,  subs_buf[7].sl);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Work_t, (u32_t*)subs_buf[7].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Work_q,      true);
+  // 8
+  ftemp = (f32_t)subs_buf[8].sl;
+  S2M_SET_ATTR(f32, ied, IEDMODEL_UPG_GGIO0_Id_mag_f,  ftemp);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Id_t, (u32_t*)subs_buf[8].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Id_q,      true);
+  // 9
+  ftemp = (f32_t)subs_buf[9].sl;
+  S2M_SET_ATTR(f32, ied, IEDMODEL_UPG_GGIO0_Rl_mag_f,  ftemp);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Rl_t, (u32_t*)subs_buf[9].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Rl_q,      true);
+  // 10;
+  ftemp = (f32_t)subs_buf[10].sl;
+  S2M_SET_ATTR(f32, ied, IEDMODEL_UPG_GGIO0_Ud_mag_f,  ftemp);
+  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Ud_t, (u32_t*)subs_buf[10].pul);
+  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Ud_q,      true);
+#endif
 }
 
 /**  ----------------------------------------------------------------------------
@@ -377,3 +402,42 @@ void ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
 #error Macro 'PORT_IMPL' definition is needed
 #endif
 }
+
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+
+#define PERIOD_NS        5000000000L // 0.5 second
+#include <unistd.h>
+/**
+ * @brief 1PPS generation thread function
+ */
+static void *sample(void *arg)
+{
+  pps_t self = (pps_t)arg;
+  // struct timespec ts;
+
+  // ts.tv_sec = 0;
+  // ts.tv_nsec = 5000000000L;
+  
+  while (runned) {
+    // Set HIGH
+    if (gpio_write(gpio, true) < 0) {
+      fprintf(stderr, "pps: gpio_write(HIGH) failed\n");
+      break;
+    }
+    //nanosleep(&ts, NULL);
+    sleep(1);
+    // Set LOW
+    if (gpio_write(gpio, false) < 0) {
+      fprintf(stderr, "pps: gpio_write(LOW) failed\n");
+      break;
+    }
+    //nanosleep(&ts, NULL);
+    sleep(1);
+    printf("[sample] Tick\n");
+  }
+  
+  thread_exit();
+  return NULL;
+}
+
+#endif

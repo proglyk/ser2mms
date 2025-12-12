@@ -25,11 +25,13 @@ static s2m_t *s2m = NULL;
 static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
-  .device_path = "/dev/ttyV0",
-//.device_path = "/dev/ttyUSB0",
+//.device_path = "/dev/ttyV0",
+  .device_path = "/dev/ttyUSB1",
   .gpio_path   = NULL
 #elif (LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-#error "Not available"
+//#error "Not available"
+  .device_path = NULL,
+  .gpio_path   = NULL,
 #endif
 #else
 #error "Not available"
@@ -180,44 +182,44 @@ static void write_subs_poll(void *opaque, prm_t *subs_buf,
   subs_buf[0].pul[1] = ts_int[1];
   
   subs_buf[1].sl = 2;
-  subs_buf[1].pul[0] = 1762506309;
-  subs_buf[1].pul[1] = 100;
+  subs_buf[1].pul[0] = ts_int[0];
+  subs_buf[1].pul[1] = ts_int[1];
   
   subs_buf[2].sl = 3;
-  subs_buf[2].pul[0] = 1762506317;
-  subs_buf[2].pul[1] = 150;
+  subs_buf[2].pul[0] = ts_int[0];
+  subs_buf[2].pul[1] = ts_int[1];
   
   subs_buf[3].sl = 4;
-  subs_buf[3].pul[0] = 1762506324;
-  subs_buf[3].pul[1] = 200;
+  subs_buf[3].pul[0] = ts_int[0];
+  subs_buf[3].pul[1] = ts_int[1];
   
   subs_buf[4].sl = 5;
-  subs_buf[4].pul[0] = 1762506327;
-  subs_buf[4].pul[1] = 250;
+  subs_buf[4].pul[0] = ts_int[0];
+  subs_buf[4].pul[1] = ts_int[1];
   
   subs_buf[5].sl = 6;
-  subs_buf[5].pul[0] = 1762506340;
-  subs_buf[5].pul[1] = 300;
+  subs_buf[5].pul[0] = ts_int[0];
+  subs_buf[5].pul[1] = ts_int[1];
   
   subs_buf[6].sl = 7;
-  subs_buf[6].pul[0] = 1762506345;
-  subs_buf[6].pul[1] = 350;
+  subs_buf[6].pul[0] = ts_int[0];
+  subs_buf[6].pul[1] = ts_int[1];
   
   subs_buf[7].sl = 8;
-  subs_buf[7].pul[0] = 1762506351;
-  subs_buf[7].pul[1] = 400;
+  subs_buf[7].pul[0] = ts_int[0];
+  subs_buf[7].pul[1] = ts_int[1];
   
   subs_buf[8].sl = 9;
-  subs_buf[8].pul[0] = 1762506355;
-  subs_buf[8].pul[1] = 450;
+  subs_buf[8].pul[0] = ts_int[0];
+  subs_buf[8].pul[1] = ts_int[1];
   
   subs_buf[9].sl = 10;
-  subs_buf[9].pul[0] = 1762506360;
-  subs_buf[9].pul[1] = 500;
+  subs_buf[9].pul[0] = ts_int[0];
+  subs_buf[9].pul[1] = ts_int[1];
   
   subs_buf[10].sl = 11;
-  subs_buf[10].pul[0] = 1762506365;
-  subs_buf[10].pul[1] = 550;
+  subs_buf[10].pul[0] = ts_int[0];
+  subs_buf[10].pul[1] = ts_int[1];
   
 }
 
