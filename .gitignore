@@ -64,3 +64,5 @@ settings/*
 build/*
 doc/*
 bin/*
+samples/ser2mms_poll
+samples/ser2mms_slave

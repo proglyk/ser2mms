@@ -4,11 +4,8 @@
   * @date   30-September-2025
   */
 
-//#define EV_USE_THREADS                (PORT_USE_THREADS)
-#define EV_USE_THREADS                  (0)
-
-#include "ser2mms_conf.h"
 #include "event.h"
+#include "alloc.h"
 #if (EV_USE_THREADS)
 #include "port_semph.h"
 #endif
@@ -17,6 +14,7 @@
 #include <string.h>
 #include <stdio.h> 
 
+
 struct event_s {
   ev_type_t type;
   bool      active;
@@ -24,47 +22,26 @@ struct event_s {
   semph_t   sem;
 #endif
 };
+STATIC_DECLARE(EVENT, struct event_s);
 
-#if (S2M_USE_STATIC)
-static struct event_s _self;
-static int _self_is_used = 0;
-#endif
 
 /**
   * @brief Constructor
   */
 ev_t ev_init(void)
 {
-#if S2M_USE_STATIC
-  if (_self_is_used) return NULL;
-  _self_is_used = 1;
-  struct event_s *self = &_self;
-  memset((void*)self, 0, sizeof(struct event_s));
-#else
-  struct event_s *self = calloc(1, sizeof(struct event_s));
-  if (!self) return NULL;
-#endif
-  
+  ALLOC(EVENT, struct event_s, self, return NULL);
   self->type = EV_NONE;
   self->active = false;
 #if (EV_USE_THREADS)
   self->sem = semph_new();
-  if (!self->sem) goto error;
+  if (!self->sem) {
+    FREE(EVENT, self);
+    return NULL;
+  }
 #endif
   
-  printf("[ev_init]\n");
   return self;
-
-#if (EV_USE_THREADS)
-  error:
-#if S2M_USE_STATIC
-  _self_is_used = 0;
-#else
-  free(self);
-#endif //S2M_USE_STATIC
-  printf("[ev_init] err\n");
-  return NULL;
-#endif //EV_USE_THREADS
 }
 
 /**
@@ -73,17 +50,10 @@ ev_t ev_init(void)
 void ev_del(ev_t self)
 {
   assert(self);
-  printf("[ev_del]\n");
 #if (EV_USE_THREADS)
   semph_del(self->sem);
-#else
-  (void)self;
 #endif
-#if S2M_USE_STATIC
-  _self_is_used = 0;
-#else
-  free(self);
-#endif
+  FREE(EVENT, self);
 }
 
 /**
