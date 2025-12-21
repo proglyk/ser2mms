@@ -13,12 +13,15 @@
 #include <string.h>
 #include <assert.h>
 
-extern void __WEAK ser2mms_get_time(uint32_t *epoch, uint32_t *usec);
 
+extern void __WEAK ser2mms_set_time(uint32_t *, uint32_t *);
+extern void __WEAK ser2mms_read_carg( void *, u16_t *, u32_t, u8_t, u8_t );
+extern void __WEAK ser2mms_read_subs( void *, prm_t *, u32_t );
+extern void __WEAK ser2mms_write_answer( void *, u16_t *, u32_t * );
 static s32_t decode_head(ser_t);
-static void encode_head(ser_t);
-static void process_pld(ser_t);
-static void compose_pld(ser_t);
+static void  encode_head(ser_t);
+static void  process_pld(ser_t);
+static void  compose_pld(ser_t);
 
 struct ser_s {
   // Received
@@ -37,9 +40,6 @@ struct ser_s {
 #endif
   u16_t answ_buf[SER_ANSW_SIZE];
   u32_t answ_len;
-  carg_fn_t carg_fn;
-  subs_fn_t subs_fn;
-  answ_fn_t answ_fn;
   void *pld_api;
 };
 STATIC_DECLARE(SER, struct ser_s);
@@ -49,16 +49,12 @@ STATIC_DECLARE(SER, struct ser_s);
 /**
 * @brief Creates a new instance of serial protocol handler
 */
-ser_t ser_new(topmode_t mode, carg_fn_t carg_cb, subs_fn_t subs_cb,
-              answ_fn_t answ_cb, void *pld_api)
+ser_t ser_new(topmode_t mode, void *pld_api)
 {
   ALLOC(SER, struct ser_s, self, return NULL);
   self->mode = mode;
   self->ds = SER_MAX_DS_IDX;
   self->page = SER_MAX_PAGE_IDX;
-  self->carg_fn = carg_cb;
-  self->subs_fn = subs_cb;
-  self->answ_fn = answ_cb;
   self->pld_api = pld_api;
   return self;
 }
@@ -81,10 +77,16 @@ s32_t ser_in_parse(ser_t self)
   assert(self);
   
   size = (self->mode == MODE_SLAVE) ? IN_MSG_SIZE_SLAVE : IN_MSG_SIZE_POLL;
-  if (self->rcvd.size != size) return -1;
+  if (self->rcvd.size != size) {
+    printf("[ser_in_parse] Size %d not equals defined (%d)\n", self->rcvd.size, size);
+    return -1;
+  }
   
   // parse header
-  if (decode_head(self) < 0) return -1;
+  if (decode_head(self) < 0) {
+    printf("[ser_in_parse] Can't decode head\n");
+    return -1;
+  }
   // parse payload
   process_pld(self);
   return 0;
@@ -221,9 +223,8 @@ static void process_pld(ser_t self)
         *pos += 2;
       }
       // Call function to update dataset fields
-      if (self->carg_fn)
-        self->carg_fn( self->pld_api, self->cargvalue2, SER_PAGE_SIZE,
-                       self->ds, self->page );
+      ser2mms_read_carg(self->pld_api, self->cargvalue2, SER_PAGE_SIZE,
+                        self->ds, self->page);
       // Fill structure fields with buffer values
       // byte pointer to initial state
       // Parameter [0..10]
@@ -238,9 +239,7 @@ static void process_pld(ser_t self)
         *pos += 2;
       }
       // iterate through all 11 fields
-      if (self->subs_fn && (SER_NUM_SUBS>0)) {
-        self->subs_fn( self->pld_api, self->subsprm2, SER_NUM_SUBS );
-      }
+      ser2mms_read_subs(self->pld_api, self->subsprm2, SER_NUM_SUBS);
 #endif
     } break;
   }
@@ -308,9 +307,8 @@ static void compose_pld(ser_t self)
     case MODE_POLL:
     {
       // Call function to write to current page fields
-      if (self->carg_fn)
-        self->carg_fn( self->pld_api, self->cargvalue2, SER_PAGE_SIZE,
-                       self->ds, self->page );
+      ser2mms_read_carg(self->pld_api, self->cargvalue2, SER_PAGE_SIZE,
+                        self->ds, self->page);
       // iterate through current page
       for (u32_t i=0; i<SER_PAGE_SIZE; i++) {
         S_TO_PB(buf+*size, self->cargvalue2[i]);
@@ -318,9 +316,7 @@ static void compose_pld(ser_t self)
       }
 #if (!S2M_REDUCED)
       // Call function to write to subscription fields
-      if (self->subs_fn) {
-        self->subs_fn( self->pld_api, self->subsprm2, SER_NUM_SUBS );
-      }
+      ser2mms_read_subs(self->pld_api, self->subsprm2, SER_NUM_SUBS);
       // iterate through subscriptions
       for (u32_t i=0; i<SER_NUM_SUBS; i++) {
         S_TO_PB(buf+*size, (s16_t)(self->subsprm2[i].sl & 0xffff));
@@ -337,8 +333,7 @@ static void compose_pld(ser_t self)
       // command: parameter transfer
       if (self->cmd_rcvd == CMD_PARAMETERS) {
         // call functor and get values into 'answ_buf'
-        if (self->answ_fn)
-          self->answ_fn( self->pld_api, self->answ_buf, &self->answ_len );
+        ser2mms_write_answer(self->pld_api, self->answ_buf, &self->answ_len);
         // check array validity by its size 'answ_len'
         if ( !self->answ_len ) return;
         // iterate through all 'answ_buf' values
@@ -349,8 +344,8 @@ static void compose_pld(ser_t self)
       }
       // command: time transfer
       else if (self->cmd_rcvd == CMD_TIMESET) {
-        // get time
-        ser2mms_get_time(&ts[0], &ts[1]);
+        // set time externally
+        ser2mms_set_time(&ts[0], &ts[1]);
         // iterate through 'ts' fields
         I_TO_PB(buf+*size, ts[0]);
         *size += 4;

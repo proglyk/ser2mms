@@ -40,7 +40,7 @@ LINUX_HW_IMPL = WSL
 TOOLCHAIN_PREFIX = $(WSL_LINUX_TOOLCHAIN)
 CFLAGS += -m64 -pthread
 CFLAGS += -Wall -g -Wextra
-CFLAGS += -fsanitize=address -fstack-protector-strong
+# CFLAGS += -fsanitize=address -fstack-protector-strong
 endif
 
 # ARM + Linux

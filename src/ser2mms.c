@@ -28,13 +28,12 @@ static struct ser2mms_s _self;
 static int _self_is_used = 0;
 #endif
 
-extern volatile bool runned;
+extern int running;
 
 //================================ PUBLIC API ==================================
 
 
-s2m_t *ser2mms_new(void *ied, carg_fn_t fn1, subs_fn_t fn2, answ_fn_t fn3, 
-                         u32_t mode, u32_t id, void *stty_init)
+s2m_t *ser2mms_new(void *ied, u32_t mode, u32_t id, void *stty_init)
 {
 #if S2M_USE_STATIC
   if (_self_is_used) return NULL;
@@ -48,7 +47,7 @@ s2m_t *ser2mms_new(void *ied, carg_fn_t fn1, subs_fn_t fn2, answ_fn_t fn3,
 
   self->ied = ied;
   // Transport layer
-  self->tp = transp_init(0, NULL, NULL, NULL, fn1, fn2, fn3, (void *)self,
+  self->tp = transp_new(0, NULL, NULL, NULL, (void *)self,
                          mode, id, stty_init);
   if (!self->tp) {
     //printf("[s2m_create] tp is null\n");
@@ -95,7 +94,7 @@ void ser2mms_stop(s2m_t *self)
 #if (S2M_USE_THREADS)
   thread_del(self->thread);
 #endif
-  transp_del(0, (void *)self->tp);
+  transp_destroy(0, (void *)self->tp);
 #if S2M_USE_STATIC
   _self_is_used = 0;
 #else
@@ -128,9 +127,24 @@ void *ser2mms_get_ied(s2m_t *self)
   return self->ied;
 }
 
-void __WEAK ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
+void __WEAK ser2mms_set_time(uint32_t *epoch, uint32_t *usec)
 {
   
+}
+
+void __WEAK ser2mms_read_carg(void *opaque, u16_t *carg_buf, __UNUSED u32_t carg_len, u8_t ds, u8_t page)
+{
+  
+}
+
+void __WEAK ser2mms_read_subs(void *opaque, prm_t *subs_buf, __UNUSED u32_t subs_len)
+{
+  
+}
+
+void __WEAK ser2mms_write_answer(void *argv, u16_t *answ_buf, u32_t *answ_len)
+{
+
 }
 
 #if 0
@@ -174,8 +188,8 @@ static void *poll(void *opaque)
 #if (S2M_USE_THREADS)
    do {
     transp_poll(tp);
-  } while (runned == true);
-  printf("[poll] Caught condition 'runned == false', exiting...\n");
+  } while (running);
+  printf("[poll] Caught condition '!running', exiting...\n");
   thread_exit();   // Завершаем поток
 #else
   transp_poll(tp);

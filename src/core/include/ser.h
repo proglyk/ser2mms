@@ -77,8 +77,7 @@ typedef struct ser_s *ser_t;
 * @retval Returns pointer to this instance or NULL if failed to
 * allocate memory or object is already in use (static allocation)
 */
-ser_t ser_new(topmode_t mode, carg_fn_t carg_cb, subs_fn_t subs_cb,
-              answ_fn_t answ_cb, void *pld_api);
+ser_t ser_new(topmode_t mode, void *pld_api);
 
 /**
 * @brief Destroys 'struct ser_s' object and releases resources
