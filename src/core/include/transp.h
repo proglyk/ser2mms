@@ -39,9 +39,8 @@ int transp_poll(transp_t *self);
 * @retval Pointer to transport instance on success
 * @retval NULL on allocation or initialization failure
 */
-void *transp_init(int argc, int *pdata, void *argv, void *irq, 
-                  carg_fn_t fn1, subs_fn_t fn2, answ_fn_t fn3,
-                  void *pld_api, u32_t mode, u32_t id, void *stty_init);
+void *transp_new(int argc, int *pdata, void *argv, void *irq, 
+                 void *pld_api, u32_t mode, u32_t id, void *stty_init);
 
 /**
 * @brief Starts transport layer operation
@@ -54,7 +53,7 @@ void transp_run(transp_t *self);
 * @param argc Argument count (unused)
 * @param opaque Pointer to transport instance
 */
-void transp_del(int argc, void *opaque);
+void transp_destroy(int argc, void *opaque);
 
 /**
 * @brief Returns pointer to timer handle

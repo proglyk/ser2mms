@@ -44,8 +44,6 @@ tmr_t tmr__init(u32_t timeout, tmr_tick_t fn, tmr_pld_t pld)
   self->timeout = timeout;
   self->fn = fn;
   self->pld = pld;
-  
-  printf("[tmr__init]\n");
   return self;
 }
 
@@ -56,8 +54,7 @@ tmr_t tmr__init(u32_t timeout, tmr_tick_t fn, tmr_pld_t pld)
 void tmr__del(tmr_t self)
 {
   assert(self);
-  
-  printf("[tmr__del]\n");
+
   if (self->enabled) {
     self->enabled = false;
   }

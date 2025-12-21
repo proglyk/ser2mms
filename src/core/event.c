@@ -28,7 +28,7 @@ STATIC_DECLARE(EVENT, struct event_s);
 /**
   * @brief Constructor
   */
-ev_t ev_init(void)
+ev_t ev_new(void)
 {
   ALLOC(EVENT, struct event_s, self, return NULL);
   self->type = EV_NONE;
@@ -47,7 +47,7 @@ ev_t ev_init(void)
 /**
   * @brief Destructor
   */
-void ev_del(ev_t self)
+void ev_destroy(ev_t self)
 {
   assert(self);
 #if (EV_USE_THREADS)

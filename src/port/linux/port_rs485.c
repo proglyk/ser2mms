@@ -18,10 +18,12 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/serial.h>
 #include <termios.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/select.h>
@@ -43,7 +45,7 @@ struct rs485_s {
   bool  sta_ena_rx;
   u8_t  rcvd_buf[RCVD_BUF_SIZE];
   u32_t rcvd_pos;
-  fn_t  fn_rcv;
+  void (*fn_rcv)(void *, u32_t);
   void  *fn_pld;
   
   bool  sta_ena_tx;
@@ -55,7 +57,6 @@ struct rs485_s {
 
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
   gpio_t *nre_de;
-  // dir_t   dir;
 #endif
 };
 
@@ -93,28 +94,21 @@ rs485_t rs485_new(void *init, rs485_fn_t *fn)
   // check the name
   if (!pinit->device_path) {
     printf("[rs485_new] Dev name must be valid\n");
-    goto exit_0;//return NULL;
+    goto exit_0;
   }
   // try open
   self->fd = open( pinit->device_path, O_RDWR | O_NOCTTY | O_NONBLOCK);
   if (self->fd < 0) {
     printf("[rs485_new] Cann't open dev '%s'\n", pinit->device_path);
-    goto exit_0;//return NULL;
+    goto exit_0;
   }
-  
-/*   // Сохраняем текущие настройки
-  tcgetattr( self->fd, &self->tio_old );
-  bzero( &tio, sizeof(tio) );
-  
-  // Настройка параметров данных
-  tio.c_iflag |= IGNBRK | INPCK;
-  tio.c_cflag |= CREAD | CLOCAL;
-  tio.c_cflag |= CS8;
-  tio.c_cflag |= CSTOPB;
-  
-  // Настройка скорости передачи
-  cfsetispeed( &tio, B9600 );
-  cfsetospeed( &tio, B9600 ); */
+
+  struct serial_struct serial;
+  if (ioctl(self->fd, TIOCGSERIAL, &serial) == 0) {
+    serial.flags |= ASYNC_LOW_LATENCY;
+    if (ioctl(self->fd, TIOCSSERIAL, &serial) < 0)
+      perror("[rs485_new] ASYNC_LOW not configured");
+  }
   
   // Сохраняем текущие настройки
   tcgetattr(self->fd, &self->tio_old);
@@ -130,12 +124,8 @@ rs485_t rs485_new(void *init, rs485_fn_t *fn)
   // Устанавливаем нужные параметры
   tio.c_iflag |= IGNBRK | INPCK;
   tio.c_cflag |= CREAD | CLOCAL | CS8;
-  // tio.c_cflag |= CSTOPB;
-  // Настройка скорости передачи
-  // cfsetispeed(&tio, B9600);
-  // cfsetospeed(&tio, B9600);
-  cfsetispeed(&tio, B115200);
-  cfsetospeed(&tio, B115200);
+  cfsetispeed(&tio, B230400);
+  cfsetospeed(&tio, B230400);
   // Таймауты для неблокирующего чтения
   tio.c_cc[VMIN] = 0;
   tio.c_cc[VTIME] = 0;
@@ -144,7 +134,7 @@ rs485_t rs485_new(void *init, rs485_fn_t *fn)
   tcflush(self->fd, TCIFLUSH);
   if (tcsetattr(self->fd, TCSANOW, &tio) < 0) {
     perror("Error setting attributes");
-    goto exit_1; //close(self->fd); //return NULL;
+    goto exit_1;
   }
 
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
@@ -157,14 +147,12 @@ rs485_t rs485_new(void *init, rs485_fn_t *fn)
   }
 #endif
   
-  printf("[rs485_new]\n");
   return self;
   
 exit_1:
   close(self->fd);
 exit_0:
   PORT_FREE(RS485, self);
-  printf("[rs485_new] err\n");
   return NULL;
 }
 
@@ -182,7 +170,6 @@ void rs485_del(rs485_t self)
   if (self->fd != -1) {
     tcsetattr( self->fd, TCSANOW, &self->tio_old );
     close( self->fd );
-    printf("[rs485_del]\n");
     self->fd = -1;
   }
   PORT_FREE(RS485, self);
@@ -245,13 +232,8 @@ bool rs485_get(rs485_t self, u8_t *byte)
   */
 bool rs485_put(rs485_t self, u8_t byte)
 {
-  assert (self);
-  
-  // printf("[rs485_put] put\r\n");
-  
+  assert(self);
   if (self->xmit_size < XMIT_BUF_SIZE) {
-    // printf("[mb_tp__xmit] Cond '<': %02d < %02d \r\n",
-      // self->xmit_size, XMIT_BUF_SIZE);
     self->xmit_buf[self->xmit_size++] = byte;
     return true;
   }
@@ -262,58 +244,47 @@ bool rs485_put(rs485_t self, u8_t byte)
   * @brief  ?
   * @param  self - ?
   */
-void rs485_poll(rs485_t self)
+void rs485_poll_rx(rs485_t self)
 {
   u32_t rcvd = 0;
-  u32_t i;
   
   if (self->sta_ena_rx) {
     if ( !receive(self->fd, self->rcvd_buf, RCVD_BUF_SIZE, &rcvd) ) {
-      //printf("[rs485_poll] Nothing to read\n");
+      // printf("[rs485_poll_rx] Nothing to read\n");
       return;
     }
     if (rcvd > 0) {
-      printf("[rs485_poll] rcvd>0\n");
-      for( i = 0; i < rcvd; i++ ) {
-        /* Call the modbus stack and let him fill the buffers. */
-        if (self->fn_rcv) self->fn_rcv(self->fn_pld);
-      }
+      if (self->fn_rcv) self->fn_rcv(self->fn_pld, rcvd);
       self->rcvd_pos = 0;
     }
   }
-  
-  if (self->sta_ena_tx) {
-    //
-    if (self->sta_send_tx && !self->sta_wait_tx) {
-      while (self->sta_send_tx) {
-        if (self->fn_xmt) self->fn_xmt(self->fn_pld);
-      }
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-      if (self->nre_de) {
-        int rc = nre_de_set(self, DIR_OUT);
-        // if (rc) printf("[rs485_ena] can't set DIR_OUT nre_de\n");
-        // self->dir = DIR_OUT;
-        printf("[rs485_ena] Has set DIR_OUT nre_de\n");
-      }
-#endif
-      if (!transmit(self->fd, self->xmit_buf, self->xmit_size)) {
-        perror("Сan't send the frame completely");
-      }
-    }
-    //
-    else if (self->sta_wait_tx && !self->sta_send_tx) {
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-      thread_sleep(PORT_RS485_DE_WAIT);
-      if (self->nre_de) {
-        int rc = nre_de_set(self, DIR_IN);
-        // if (rc) printf("[rs485_ena] can't set DIR_IN nre_de\n");
-        printf("[rs485_ena] Has set DIR_IN nre_de\n");
-      }
-#endif
-      if (self->fn_xmt) self->fn_xmt(self->fn_pld);
-    }
-  }
 }
+
+/**
+  * @brief  ?
+  * @param  self - ?
+  */
+ void rs485_poll_tx(rs485_t self)
+ {
+   if (self->sta_ena_tx) {
+     //
+     if (self->sta_send_tx && !self->sta_wait_tx) {
+       while (self->sta_send_tx) {
+         if (self->fn_xmt) self->fn_xmt(self->fn_pld);
+       }
+ #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+       if (self->nre_de) nre_de_set(self, DIR_OUT);
+ #endif
+       if (!transmit(self->fd, self->xmit_buf, self->xmit_size)) {
+         perror("Сan't send the frame completely");
+       }
+ #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+       thread_sleep(PORT_RS485_DE_WAIT);
+       if (self->nre_de) nre_de_set(self, DIR_IN);
+ #endif
+     }
+   }
+ }
 
 // ============================ Статические функции ============================
 
@@ -328,8 +299,8 @@ static bool receive(fd_t fd, u8_t *buf, u32_t size, u32_t *rcvd)
   struct timeval tv;
   ssize_t        rc;
   
-  tv.tv_sec = 0; //1;
-  tv.tv_usec = 25000;
+  tv.tv_sec = 0;
+  tv.tv_usec = 250; // 250 мкс
   FD_ZERO( &rfds );
   FD_SET( fd, &rfds );
   
@@ -383,11 +354,7 @@ static s32_t nre_de_init(rs485_t self, const char *path, u32_t line)
   }
   
   // try open
-  // if (gpio_open(self->nre_de, path, 10, line) < 0) {
-    // printf( "Can't open 'gpio_t' object with path %s\n", path);
-    // goto exit_0;
-  // }
-  if (gpio_open(self->nre_de, path, line, GPIO_DIR_OUT) < 0) {
+  if (gpio_open_sysfs(self->nre_de, line, GPIO_DIR_OUT) < 0) {
     printf( "Can't open 'gpio_t' object with path %s\n", path);
     goto exit_0;
   }
@@ -397,9 +364,6 @@ static s32_t nre_de_init(rs485_t self, const char *path, u32_t line)
     printf( "Can't set value to 'gpio_t' object\n");
     goto exit_1;
   }
-  
-  printf( "[nre_de_init] sucsefl inited\n");
-  
   return 0;
   
   exit_1:
@@ -428,22 +392,7 @@ static void nre_de_del(rs485_t self)
 static s32_t nre_de_set(rs485_t self, dir_t direction)
 {
   if (!self) return -1;
-  //self->de_dir = direction;
   return gpio_write(self->nre_de, (direction==DIR_IN) ? false : true);
-  //return gpio_write(self->nre_de, true);
 }
 
 #endif
-
-// OLD -------------------------------------------------------------------------
-
-void serial__ena_rx(__UNUSED rs485_t self)
-{
-  //HAL_Receive_IT(self->h, self->rcvd_buf, sizeof(self->rcvd_buf));
-}
-
-void *serial__get_h(__UNUSED rs485_t self)
-{
-  //return (void *)self->h;
-  return (void *)NULL;
-}

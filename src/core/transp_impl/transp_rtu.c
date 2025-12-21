@@ -19,98 +19,90 @@
 #if (S2M_USE_TRANSP_RTU)
 
 extern u16_t crc16(const u8_t *, u16_t);
-
-static void tick(void *);
-static void recv(void *);
-static void xmit(void *);
+static void  tick_impl(void *);
+static void  recv_impl(void *, u32_t);
+static void  xmit_impl(void *);
 static s32_t msg_unpack(transp_t *tp);
-static void msg_pack(transp_t *tp);
+static void  msg_pack(transp_t *tp);
 
 typedef enum {
-  RECV_INIT, RECV_IDLE, RECV_ACT, RECV_ERR
+  RECV_INIT, RECV_IDLE, RECV_ACT
 } recv_sta_t;
 
 typedef enum {
-  XMIT_INIT, XMIT_IDLE, XMIT_ACT, XMIT_NREDE, XMIT_ERR
+  XMIT_INIT, XMIT_IDLE, XMIT_ACT, XMIT_ERR
 } xmit_sta_t;
 
 struct transp_s
 {
-  tmr_t tmr;
   rs485_t stty;
   recv_sta_t recv_sta;
   xmit_sta_t xmit_sta;
-  ev_t ev_rcvd;
-  ev_t ev_xmit;
+  ev_t  ev_rcvd;
+  ev_t  ev_xmit;
   u32_t id;
   ser_t ser;
   topmode_t mode; // TODO to move up
 };
-
 STATIC_DECLARE(TRANSP, struct transp_s);
+int s2m_toggle = 0;
 
 //================================ PUBLIC API ==================================
 
 /**
 * @brief Constructor
 */
-void *transp_init(__UNUSED int argc, __UNUSED int *pdata, __UNUSED void *argv,
-                  __UNUSED void *irq, carg_fn_t fn1, subs_fn_t fn2, answ_fn_t fn3,
-                  void *pld_api, u32_t mode, u32_t id, void *stty_init)
+void *transp_new(__UNUSED int argc, __UNUSED int *pdata, __UNUSED void *argv,
+                  __UNUSED void *irq, void *pld_api, u32_t mode, u32_t id, void *stty_init)
 {
   ALLOC(TRANSP, struct transp_s, self, return NULL);
   self->id = id;
   self->mode = mode;
   self->recv_sta = RECV_INIT;
-  self->xmit_sta = ((mode == MODE_SLAVE) ? (XMIT_INIT) : (XMIT_ACT));
-
-  // timer
-  self->tmr = tmr__init(S2M_TRANSP_TIMEOUT, (tmr_tick_t)tick, (void *)self);
-  if (!self->tmr) goto error_0;
+  self->xmit_sta = XMIT_INIT;
+  //self->xmit_sta = ((mode == MODE_SLAVE) ? (XMIT_INIT) : (XMIT_ACT));
 
   // rs485
   rs485_fn_t fn_s = {
-    .func_rcv = recv, .func_xmt = xmit, .pld = (void *)self
+    .func_rcv = recv_impl, .func_xmt = xmit_impl, .pld = (void *)self
   };
   self->stty = rs485_new(stty_init, &fn_s);
   if (!self->stty) {
     printf("[transp_init] rs485_new() gave a FAIL\n");
-    goto error_1;
+    goto error_0;
   }
 
   // event
-  self->ev_rcvd = ev_init();
-  if (!self->ev_rcvd) goto error_2;
-  self->ev_xmit = ev_init();
-  if (!self->ev_xmit) goto error_3;
+  self->ev_rcvd = ev_new();
+  if (!self->ev_rcvd) goto error_1;
+  self->ev_xmit = ev_new();
+  if (!self->ev_xmit) goto error_2;
 
   // top layer
-  self->ser = ser_new(mode, fn1, fn2, fn3, pld_api);
-  if (!self->ser) goto error_4;
+  self->ser = ser_new(mode, pld_api);
+  if (!self->ser) goto error_3;
 
   //ser_set_cmd(self->ser, 1);
   return (void *)self;
 
   // cleanup created objects
-error_4: ev_del(self->ev_xmit);
-error_3: ev_del(self->ev_rcvd);
-error_2: rs485_del(self->stty);
-error_1: tmr__dis(self->tmr);
-error_0: FREE(TRANSP, self);
+  error_3: ev_destroy(self->ev_xmit);
+  error_2: ev_destroy(self->ev_rcvd);
+  error_1: rs485_del(self->stty);
+  error_0: FREE(TRANSP, self);
   return NULL;
 }
 
 /**
 * @brief Destructor
 */
-void transp_del(__UNUSED int argc, void *opaque)
+void transp_destroy(__UNUSED int argc, void *opaque)
 {
   transp_t *self = (transp_t *)opaque;
   assert(self);
-  tmr__del(self->tmr);
   rs485_del(self->stty);
-  ev_del(self->ev_rcvd);
-  ev_del(self->ev_xmit);
+  ev_destroy(self->ev_rcvd);
+  ev_destroy(self->ev_xmit);
   ser_destroy(self->ser);
   FREE(TRANSP, self);
 }
@@ -121,9 +113,8 @@ void transp_del(__UNUSED int argc, void *opaque)
 void transp_run( transp_t *self )
 {
   assert(self);
-  //self->recv_sta = RECV_INIT;
+  self->recv_sta = RECV_IDLE;
   rs485_ena( self->stty, true, false );
-  tmr__ena(self->tmr);
 }
 
 /**
@@ -132,93 +123,46 @@ void transp_run( transp_t *self )
 int transp_poll(transp_t *tp)
 {
   ev_type_t type;
-  bool sta = false;
-  s32_t rc;
-  static u32_t counter = 0;
 
-  //printf("[mb_tp__poll] tp->recv_sta is %d\n", tp->recv_sta);
-  //printf("[mb_tp__poll] tp->xmit_sta is %d\n", tp->xmit_sta);
+  // 1.
+  rs485_poll_rx(tp->stty);
 
-  // Polling
-  rs485_poll(tp->stty);
-
-  // if (tp->mode == MODE_SLAVE) {
-  tmr__poll(tp->tmr);
-  // }
-
-  // Try to get rcvd event. If threads used blocking when no event available
-  if (tp->mode == MODE_SLAVE) {
-    sta = ev_get(tp->ev_rcvd, &type);
-    if (sta) {
-      switch ( type )
-      {
-        case EV_RCVD: {
-          //
-          rc = msg_unpack(tp);
-#if (S2M_DEBUG)
-          if (rc) {
-            printf("[transp_poll] MB isn't ok\r\n");
-          } else {
+  // 2.
+  switch (tp->mode)
+  {
+    case MODE_SLAVE: {
+      // Событие на прием (сообщение от ведущего)
+      if (ev_get(tp->ev_rcvd, &type)) {
+        if (type == EV_RCVD) {
+          tp->recv_sta = RECV_IDLE;
+          // s2m_toggle ^= 1;
+          if (msg_unpack(tp) == 0) {
+            // printf("[transp_poll] msg_unpack == 0\n");
             msg_pack(tp);
             tp->xmit_sta = XMIT_ACT;
             rs485_ena(tp->stty, false, true);
-            //ev_post( tp->ev_rcvd, EV_SENT );
-            printf("[transp_poll] MB is ok\r\n");
+            rs485_poll_tx(tp->stty);
           }
-#endif //S2M_DEBUG
-        } break;
-        case EV_EXEC: {
-          // eMBRTUSend()
-          //ev_post( tp->ev_rcvd, EV_SENT );
-        } break;
-        case EV_SENT: {
-          // eMBRTUSend()
-          //tp->xmit_sta = XMIT_ACT;
-          //rs485_ena(tp->stty, false, true);
-        } break;
-        case EV_NONE:
-        default: break;
+        }
       }
-    }
-  }
+    } break;
 
-  if (tp->mode == MODE_POLL) {
-    // sta = ev_get(tp->ev_rcvd, &type);
-    // if (sta) {
-    //   printf("[mb_tp__poll] sta_ev_rcvd is %d\n", sta);
-    //   if (type == EV_RCVD) {
-    //     rc = msg_unpack(tp);
-    //     #if (S2M_DEBUG)
-    //     if (rc) printf("[transp_poll] MB isn't ok\n");
-    //     else printf("[transp_poll] MB is ok\n");
-    //     #endif //S2M_DEBUG
-    //   } else {
-    //     printf("[transp_poll] type is unknown\n");
-    //   }
-    // }
-
-    // if (counter >= 4) {
-    //   ev_post( tp->ev_xmit, EV_SENT );
-    //   counter=0;
-    // } else counter++;
-
-    sta = ev_get(tp->ev_xmit, &type);
-    if (sta) {
-      printf("[mb_tp__poll] sta_ev_xmit is %d\n", sta);
-      switch ( type ) {
-        case EV_RCVD: {
-        } break;
-        case EV_EXEC: {
-        } break;
-        case EV_SENT: {
-          //
+    case MODE_POLL: {
+      // Событие на прием (ответное сообщение от ведомого)
+      if (ev_get(tp->ev_rcvd, &type)) {
+        if (type == EV_RCVD) {
+          msg_unpack(tp);
+        }
+      }
+      // Событие на передачу (команда от пользователя)
+      if (ev_get(tp->ev_xmit, &type)) {
+        if (type == EV_SENT) {
           msg_pack(tp);
-          //
           tp->xmit_sta = XMIT_ACT;
           rs485_ena(tp->stty, false, true);
-        } break;
+        }
       }
-    }
+    } break;
   }
 
   return 0;
@@ -241,7 +185,7 @@ void transp_tick(transp_t *self)
 void transp_recv(transp_t *self)
 {
   assert(self);
-  recv((void*)self);
+  recv_impl((void*)self, 0);
 }
 
 /**
@@ -250,7 +194,7 @@ void transp_recv(transp_t *self)
 void transp_xmit(transp_t *self)
 {
   assert(self);
-  xmit((void*)self);
+  xmit_impl((void*)self);
 }
 
 /**
@@ -274,127 +218,20 @@ void transp_set_id(transp_t *self, u32_t id)
 //=============================== PRIVATE API ==================================
 
 /**
-* @brief Receive next byte
-*/
-static void recv(void *opaque)
-{
-  transp_t *self = (transp_t *)opaque;
-  buf_rcvd_t pbuf;
-  u8_t byte;
-  bool rc;
-  assert(self);
-
-  pbuf = GET_RCVD(self->ser);
-  rc = rs485_get(self->stty, &byte);
-  if (rc) {
-    printf("[recv] Received: %#X\n", byte);
-    switch ( self->recv_sta )
-    {
-      case RECV_INIT: {
-      } break;
-      case RECV_IDLE: {
-        self->recv_sta = RECV_ACT;
-        pbuf->size = 0;
-        pbuf->buf[pbuf->size++] = byte;
-      } break;
-      case RECV_ACT: {
-        if( pbuf->size < BUFSIZE )
-          pbuf->buf[pbuf->size++] = byte;
-        else
-          self->recv_sta = RECV_ERR;
-      } break;
-      case RECV_ERR: {
-      } break;
-    }
-  } else {
-    printf("[recv] Missed\r\n");
-  }
-
-  // update time_last // restart timer
-  tmr__ena(self->tmr); // TODO tmr_set_prd(self->tmr, 600);
-}
-
-/**
-* @brief Transmit next byte
-*/
-static void xmit(void *opaque)
-{
-  transp_t *self = (transp_t *)opaque;
-  buf_xmit_t pbuf;
-  static int count = 0;
-  assert(self);
-
-  pbuf = GET_XMIT(self->ser);
-  switch ( self->xmit_sta )
-  {
-    case XMIT_INIT: {
-    } break;
-    case XMIT_IDLE: {
-    } break;
-    case XMIT_ACT: {
-      if ( pbuf->pos < pbuf->size ) {
-        rs485_put( self->stty, pbuf->buf[pbuf->pos++] );
-      } else {
-        rs485_ena_wait(self->stty, false);
-        self->xmit_sta = XMIT_NREDE;
-      }
-    } break;
-    case XMIT_NREDE: {
-      rs485_ena(self->stty, true, false);
-      self->xmit_sta = XMIT_IDLE;
-    } break;
-    case XMIT_ERR: {
-    } break;
-  }
-}
-
-/**
-* @brief Timer periodic tick routine
-*/
-static void tick(void *opaque)
-{
-  transp_t *self = (transp_t *)opaque;
-  assert(self);
-
-#if (S2M_DEBUG)
-  printf("[tick] Timer tick!\r\n");
-#endif //S2M_DEBUG
-
-  switch ( self->recv_sta )
-  {
-    case RECV_INIT: {
-      //ev_post( self->ev_rcvd, EV_RDY ); //TODO why is this needed?
-    } break;
-    case RECV_ACT: {
-      ev_post( self->ev_rcvd, EV_RCVD ); //TODO restore to proper place in RECV_ACT
-#if (S2M_DEBUG)
-      printf("[tick] new event\n");
-#endif //S2M_DEBUG
-    } break;
-    //case RECV_IDLE:
-    //case RECV_ERR:
-    default: {
-      printf("[tick] Ticked at the wrong moment\n");
-    } break;
-  }
-
-  // Always disable timer
-  tmr__dis(self->tmr);
-  self->recv_sta = RECV_IDLE;
-}
-
-/**
 * @brief Unpack and validate received message
 */
 static s32_t msg_unpack(transp_t *self)
 {
   buf_rcvd_t pbuf = GET_RCVD(self->ser);
-  if (pbuf->size < 3) return -1;
+  if (pbuf->size < 3) {
+    printf("[msg_unpack] size < 3\n");
+    return -1;
+  }
   pbuf->pos = 0;
 
   // Check for address
   if (pbuf->buf[pbuf->pos++] != 12 ) {
-    printf("[msg_unpack] address is wrong\r\n");
+    printf("[msg_unpack] address is wrong\n");
     return -1;
   }
 
@@ -408,14 +245,14 @@ static s32_t msg_unpack(transp_t *self)
   #error "Please define any CRC type"
 #endif
   {
-    printf("[msg_unpack] CRC is wrong\r\n");
+    printf("[msg_unpack] CRC is wrong\n");
     return -1;
   }
 
   // Call the top layer
   s32_t rc = ser_in_parse(self->ser);
   if (rc < 0) {
-    printf("[msg_unpack] Can't parse\r\n");
+    printf("[msg_unpack] Can't parse\n");
     return -1;
   }
 
@@ -449,6 +286,60 @@ static void msg_pack(transp_t *self)
 #else
   #error "Please define any CRC type"
 #endif
+}
+
+/**
+* @brief Receive next byte
+*/
+static void recv_impl(void *opaque, u32_t len)
+{
+  u8_t byte;
+  assert(opaque);
+
+  transp_t *self = (transp_t *)opaque;
+  buf_rcvd_t pbuf = GET_RCVD(self->ser);
+
+  switch ( self->recv_sta )
+  {
+    case RECV_IDLE:
+      self->recv_sta = RECV_ACT;
+      pbuf->size = 0;
+    case RECV_ACT: {
+      for (u32_t i=0; i<len; i++) {
+        if (rs485_get(self->stty, &byte)) {
+          if( pbuf->size < BUFSIZE ) {
+            pbuf->buf[pbuf->size++] = byte;
+          }
+        }
+      }
+      if (pbuf->size >= IN_MSG_SIZE_SLAVE) {
+        ev_post( self->ev_rcvd, EV_RCVD );
+      }
+    } break;
+  }
+}
+
+/**
+* @brief Transmit next byte
+*/
+static void xmit_impl(void *opaque)
+{
+  assert(opaque);
+
+  transp_t *self = (transp_t *)opaque;
+  buf_xmit_t pbuf = GET_XMIT(self->ser);
+
+  switch ( self->xmit_sta )
+  {
+    case XMIT_ACT: {
+      if ( pbuf->pos < pbuf->size ) {
+        rs485_put( self->stty, pbuf->buf[pbuf->pos++] );
+      } else {
+        rs485_ena(self->stty, true, false);
+        self->xmit_sta = XMIT_IDLE;
+      }
+    } break;
+  }
 }
 
 #endif//MMS2SER_TRANSP_USE_RTU

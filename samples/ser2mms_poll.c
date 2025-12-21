@@ -9,25 +9,21 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
-#include <stdlib.h>
 #include <time.h>
 
 
-static void write_carg_poll( void *, u16_t *, u32_t, u8_t, u8_t );
-static void write_subs_poll( void *, prm_t *, u32_t );
-static void read_answ_poll( void *, u16_t *, u32_t * );
 static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) );
 static void handler_sigquit(int sig);
 static void handler_sigint(int sig);
 
-volatile bool runned = true;
+int running = 1;
 static s2m_t *s2m = NULL;
 
 static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
-//.device_path = "/dev/ttyV0",
-  .device_path = "/dev/ttyUSB1",
+  .device_path = "/dev/ttyV0",
+// .device_path = "/dev/ttyUSB1",
   .gpio_path   = NULL
 #elif (LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
 //#error "Not available"
@@ -47,40 +43,34 @@ int main(void)
   vSetSignal(SIGINT,  handler_sigint);  // код (2) 'Ctrl+C'
   
   // init
-  s2m = ser2mms_new(NULL, write_carg_poll, write_subs_poll, read_answ_poll, 
-                    S2M_POLL, 12, 
+  s2m = ser2mms_new(NULL, S2M_POLL, 12, 
                     (void *)&s2m_stty_init);
-  if (!s2m) {
-    perror("[main] Can't create s2m inst");
-    exit(1);
-  }
+  assert(s2m);
   
   // run
   ser2mms_run(s2m);
+  printf("Runned\r\n");
   
   // loop
   do {
     printf( "> " );
     symb = getchar();
     switch (symb) {
-      case 'q': runned = false; break;
+      case 'a': printf("fuck you\r\n"); break;
+      case 'q': running = 0; break;
     }
-  } while( runned );
+  } while( running );
   
   // close
   ser2mms_stop(s2m);
+  printf("Stopped\r\n");
   return 0; 
 }
 
 /**
-  * @brief Функция обновления полей датасетов.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
-  * @retval none: Нет
+  * @brief Чтение значений страниц
   */
-static void write_carg_poll( void *opaque, u16_t *carg_buf, 
-                        __UNUSED u32_t carg_len, u8_t ds, u8_t page )
+ void ser2mms_read_carg(void *opaque, u16_t *carg_buf, __UNUSED u32_t carg_len, u8_t ds, u8_t page)
 {
   // f32_t ftemp;
   // s32_t stemp;
@@ -152,14 +142,10 @@ static void write_carg_poll( void *opaque, u16_t *carg_buf,
   }
 }
 
-/**  ----------------------------------------------------------------------------
-  * @brief Функция записи полей подписок
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
-  * @retval none: Нет */
-static void write_subs_poll(void *opaque, prm_t *subs_buf, 
-                            u32_t subs_len)
+/**
+  * @brief Чтение значений подписок
+  */
+ void ser2mms_read_subs(void *opaque, prm_t *subs_buf, __UNUSED u32_t subs_len)
 {
   uint32_t ts_int[2];
   
@@ -224,14 +210,10 @@ static void write_subs_poll(void *opaque, prm_t *subs_buf,
   
 }
 
-/**  ----------------------------------------------------------------------------
-  * @brief Функция обновления полей датасетов.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
-  * @retval none: Нет */
-static void read_answ_poll( __UNUSED void *argv, u16_t *answ_buf,
-                            __UNUSED u32_t *answ_len )
+/**
+  * @brief запись ответа
+  */
+ void ser2mms_write_answer(void *argv, u16_t *answ_buf, u32_t *answ_len)
 {
   // DataAttribute *data_attr;
   f32_t ftemp = 1.0f;

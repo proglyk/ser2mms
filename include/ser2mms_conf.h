@@ -44,7 +44,7 @@
 #define S2M_REDUCED                     (0)
 
 // Настройки для модуля 'ser'
-#if (S2M_REDUCED==1)
+#if (S2M_REDUCED)
 #define IN_MSG_SIZE_SLAVE               (12)  //тест
 #else
 #define SER_NUM_SUBS                    (11)
@@ -59,6 +59,6 @@
 #define IN_MSG_SIZE_POLL                (11)
 #define SER_ANSW_SIZE                   (3)
 
-#define S2M_TRANSP_TIMEOUT              (10) // время ожидания на прием, мс
+#define S2M_TRANSP_TIMEOUT              (5) // время ожидания на прием, мс
 
 #endif //SER2MMS_CONF_H

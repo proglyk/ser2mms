@@ -33,6 +33,6 @@
 #define PORT_DBG_EN                     (1)
 
 // Time to lock nRE/DE in push-up, ms
-#define PORT_RS485_DE_WAIT              (2)
+#define PORT_RS485_DE_WAIT              (1)
 
 #endif //PORT_CONF_H

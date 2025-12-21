@@ -29,13 +29,13 @@ typedef enum {
 * @retval Pointer to event instance on success
 * @retval NULL on allocation failure
 */
-ev_t ev_init(void);
+ev_t ev_new(void);
 
 /**
 * @brief Destroys event instance and releases resources
 * @param self Pointer to this instance
 */
-void ev_del(ev_t self);
+void ev_destroy(ev_t self);
 
 /**
 * @brief Posts (signals) an event with specified type

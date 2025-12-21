@@ -5,24 +5,50 @@
   */
 
 #include "ser2mms.h"
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+#include "gpio.h"
+#include "port_can.h"
+#include "port_pps.h"
+#include "port_thread.h"
+#endif
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 
-static void write_carg_slave( void *, u16_t *, u32_t, u8_t, u8_t );
-static void write_subs_slave( void *, prm_t *, u32_t );
-static void read_answ_slave( void *, u16_t *, u32_t * );
+#define P9_23                           (17 + 32*1) // uart2_de
+#define P9_15                           (16 + 32*1) // v_flt
+#define P9_25                           (21 + 32*3) // v_rdy
+#define P9_14                           (18 + 32*1) // flt1_in
+#define P9_16                           (19 + 32*1) // flt2_in
+#define P9_17                           ( 5 + 32*0) // flt1_out
+#define P9_18                           ( 4 + 32*0) // flt2_out
 
 
-// Temporary variable
-volatile bool runned = true;
-// Instance
+static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) );
+static void handler_sigterm(int sig);
+static void handler_sigint(int sig);
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+static void *sample(void *arg);
+#endif
+
+
+int running = 1;
 static s2m_t *s2m = NULL;
-// tty config
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+static gpio_t *gpio_v_flt;
+static gpio_t *gpio_v_rdy;
+static gpio_t *gpio_flt1_in;
+static gpio_t *gpio_flt2_in;
+static gpio_t *gpio_flt1_out;
+static gpio_t *gpio_flt2_out;
+static thread_t thread;
+#endif
+
 static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
@@ -30,60 +56,101 @@ static rs485_init_t s2m_stty_init = {
 //.device_path = "/dev/ttyV1",
   .gpio_path   = NULL
 #elif (LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  .device_path = "/dev/ttyS2",
-  .gpio_path   = "/dev/gpiochip0",//"/dev/gpiochip3",
-  .gpio_pin    = 17 //P9_23
+  .device_path = "/dev/ttyS2",  // uart2, ноги P9_21, P9_22
+  .gpio_path   = "/dev/gpiochip1",
+  .gpio_pin    = P9_23
 #endif
 #else
 #error "Not available"
 #endif
 };
-
+extern int s2m_toggle;
+static int toggle = 0;
 
 int main(void)
 {
-  char symb;
+  // код (15) "sudo systemctl gololed stop"
+  vSetSignal(SIGTERM, handler_sigterm);
+  // код (2) 'Ctrl+C'  
+  vSetSignal(SIGINT,  handler_sigint); 
   
   // init
-  s2m = ser2mms_new(NULL, write_carg_slave, write_subs_slave, read_answ_slave, 
-                    S2M_SLAVE, 12, 
-                    (void *)&s2m_stty_init);
+  s2m_t *s2m = ser2mms_new(
+    NULL,                   // MMS stack
+    S2M_SLAVE,              // Mode (SLAVE or POLL)
+    12,                     // Address 
+    (void *)&s2m_stty_init  // Настройка
+  );
   if (!s2m) {
-    perror("[main] Can't create s2m inst");
+    perror("Can't create s2m instance");
+    exit(1);
+  }
+  
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+  pps_t pps = pps_new();
+  if (!pps) printf("[main] pps=null\r\n");
+  
+  if (pps_run(pps) < 0) {
+    printf("[main] can't run pps\r\n");
+    pps_destroy(pps);
     exit(1);
   }
 
+  // can_t can_ptr = can_new("can1", 0);
+  // assert(can_ptr);
+
+  // Настройка входов/выходов
+  // светики фронт
+  gpio_v_flt = gpio_new();
+  gpio_open_sysfs(gpio_v_flt, P9_15, GPIO_DIR_OUT);
+  gpio_v_rdy = gpio_new();
+  gpio_open_sysfs(gpio_v_rdy, P9_25, GPIO_DIR_OUT);
+  // Авария входы
+  gpio_flt1_in = gpio_new();
+  gpio_open_sysfs(gpio_flt1_in, P9_14, GPIO_DIR_IN);
+  gpio_flt2_in = gpio_new();
+  gpio_open_sysfs(gpio_flt2_in, P9_16, GPIO_DIR_IN);
+  // Авария выходы
+  gpio_flt1_out = gpio_new();
+  gpio_open_sysfs(gpio_flt1_out, P9_17, GPIO_DIR_OUT);
+  gpio_flt2_out = gpio_new();
+  gpio_open_sysfs(gpio_flt2_out, P9_18, GPIO_DIR_OUT);
+  
+  // один поток на все gpio
+  thread = thread_new((const u8_t *)"sample", sample, NULL);
+  if (!thread) {
+    perror("Thread"); exit(1);
+  }
+#endif
+  
   // run
   ser2mms_run(s2m);
   
   // loop
   do {
-    printf( "> " );
-    symb = getchar();
-    switch (symb) {
-      case 'q': runned = false; break;
-    }
-  } while( runned );
+    sleep(1);
+  } while( running );
   
   // close
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+  // can_del(can_ptr);
+  pps_stop(pps);
+  pps_destroy(pps);
+#endif
   ser2mms_stop(s2m);
   return 0; 
 }
 
 /**
-  * @brief Функция обновления полей датасетов.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
-  * @retval none: Нет
+  * @brief Чтение значений страниц
   */
-static void write_carg_slave( void *opaque, u16_t *carg_buf, 
-                              __UNUSED u32_t carg_len, u8_t ds, u8_t page )
+void ser2mms_read_carg(void *opaque, u16_t *carg_buf, __UNUSED u32_t carg_len, u8_t ds, u8_t page)
 {
   float ftemp;
   s32_t stemp;
 
-#if (S2M_USE_LIBIEC==1)
+// #if (S2M_USE_LIBIEC==1)
+#if (0)
   void *ied = ser2mms_get_ied((s2m_t *)opaque);
   if (!ied) {
     printf("[write_carg] Ptr to ied is null\n");
@@ -216,34 +283,24 @@ static void write_carg_slave( void *opaque, u16_t *carg_buf,
   (void)ds;
   (void)page;
 
-  printf("[write_carg_slave] Value #1: %02d\r\n",  carg_buf[ 0]);
-  printf("[write_carg_slave] Value #1: %02d\r\n",  carg_buf[ 1]);
-  printf("[write_carg_slave] Value #1: %02d\r\n",  carg_buf[ 2]);
+  // printf("[write_carg_slave] Value #1: %02d\r\n",  carg_buf[ 0]);
+  // printf("[write_carg_slave] Value #1: %02d\r\n",  carg_buf[ 1]);
+  // printf("[write_carg_slave] Value #1: %02d\r\n",  carg_buf[ 2]);
 
 #endif // (S2M_USE_LIBIEC==1)
 }
 
-/**  ----------------------------------------------------------------------------
-  * @brief Функция обновления полей подписок
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
-  * @retval none: Нет */
-static void write_subs_slave( void *opaque, prm_t *subs_buf, 
-                        __UNUSED u32_t subs_len )
+/**
+  * @brief Чтение значений подписок
+  */
+void ser2mms_read_subs(void *opaque, prm_t *subs_buf, __UNUSED u32_t subs_len)
 {
-  f32_t ftemp;
-  // s2m_t *s2m = (s2m_t *)opaque;
-  // assert(s2m);
-  void *ied = ser2mms_get_ied((s2m_t *)opaque);
-  if (!ied) {
-    printf("[write_carg] Ptr to ied is null\n");
-    return;
-  }
+  (void)opaque;
+  (void)subs_buf;
   
-  printf("[write_subs_slave] Value #1: %02d\r\n",  subs_buf[ 0].sl);
-  printf("[write_subs_slave] Epoch #1: %010d\r\n", subs_buf[ 0].pul[0]);
-  printf("[write_subs_slave] Usec  #1: %d\r\n",  subs_buf[ 0].pul[1]);
+  // printf("[write_subs_slave] Value #1: %02d\r\n",  subs_buf[ 0].sl);
+  // printf("[write_subs_slave] Epoch #1: %010d\r\n", subs_buf[ 0].pul[0]);
+  // printf("[write_subs_slave] Usec  #1: %d\r\n",  subs_buf[ 0].pul[1]);
   
   // printf("[write_subs_slave] Epoch #2: %010d\r\n", subs_buf[ 1].pul[0]);
   // printf("[write_subs_slave] Epoch #3: %010d\r\n", subs_buf[ 2].pul[0]);
@@ -255,72 +312,20 @@ static void write_subs_slave( void *opaque, prm_t *subs_buf,
   // printf("[write_subs_slave] Epoch #9: %010d\r\n", subs_buf[ 8].pul[0]);
   // printf("[write_subs_slave] Epoch#10: %010d\r\n", subs_buf[ 9].pul[0]);
   // printf("[write_subs_slave] Epoch#11: %010d\r\n", subs_buf[10].pul[0]);
-
-#if (S2M_USE_LIBIEC==1)
-  // 0
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_ConnStatus_mag_i, subs_buf[0].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_ConnStatus_t, (u32_t*)subs_buf[0].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_ConnStatus_q,     true);
-  // 1
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_HV_mag_i, subs_buf[1].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_HV_t, (u32_t*)subs_buf[1].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_HV_q,     true);
-  // 2
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_LV_mag_i, subs_buf[2].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_LV_t, (u32_t*)subs_buf[2].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_LV_q,     true);
-  // 3
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Pause_mag_i,  subs_buf[3].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Pause_t, (u32_t*)subs_buf[3].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Pause_q,      true);
-  // 4
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Protect1_mag_i,  subs_buf[4].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Protect1_t, (u32_t*)subs_buf[4].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Protect1_q,      true);
-  // 5
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Protect2_mag_i,  subs_buf[5].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Protect2_t, (u32_t*)subs_buf[5].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Protect2_q,      true);
-  // 6
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Ready_mag_i,  subs_buf[6].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Ready_t, (u32_t*)subs_buf[6].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Ready_q,      true);
-  // 7
-  S2M_SET_ATTR(s32, ied, IEDMODEL_UPG_GGIO0_Work_mag_i,  subs_buf[7].sl);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Work_t, (u32_t*)subs_buf[7].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Work_q,      true);
-  // 8
-  ftemp = (f32_t)subs_buf[8].sl;
-  S2M_SET_ATTR(f32, ied, IEDMODEL_UPG_GGIO0_Id_mag_f,  ftemp);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Id_t, (u32_t*)subs_buf[8].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Id_q,      true);
-  // 9
-  ftemp = (f32_t)subs_buf[9].sl;
-  S2M_SET_ATTR(f32, ied, IEDMODEL_UPG_GGIO0_Rl_mag_f,  ftemp);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Rl_t, (u32_t*)subs_buf[9].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Rl_q,      true);
-  // 10;
-  ftemp = (f32_t)subs_buf[10].sl;
-  S2M_SET_ATTR(f32, ied, IEDMODEL_UPG_GGIO0_Ud_mag_f,  ftemp);
-  S2M_SET_ATTR(t,   ied, IEDMODEL_UPG_GGIO0_Ud_t, (u32_t*)subs_buf[10].pul);
-  S2M_SET_ATTR(q,   ied, IEDMODEL_UPG_GGIO0_Ud_q,      true);
-#endif
 }
 
-/**  ----------------------------------------------------------------------------
-  * @brief Функция обновления полей датасетов.
-  * @param dataset: Номер текущего датасета посылки.
-  * @param cargpage: Номер текущей страницы каретки.
-  * @param ptr: Указатель на структуру со значениями из посылки.
+/**
+  * @brief запись ответа
   */
-static void read_answ_slave( void *argv, u16_t *answ_buf, u32_t *answ_len )
+void ser2mms_write_answer(void *argv, u16_t *answ_buf, u32_t *answ_len)
 {
   u32_t cnt = 0;
   (void)argv;
   // (void)answ_buf;
   // (void)answ_len;
 
-#if (S2M_USE_LIBIEC==1)
+// #if (S2M_USE_LIBIEC==1)
+#if (0)
   DataAttribute *data_attr;
   f32_t ftemp;
   u16_t ustemp;
@@ -346,7 +351,10 @@ static void read_answ_slave( void *argv, u16_t *answ_buf, u32_t *answ_len )
 #endif
 }
 
-void ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
+/**
+  * @brief Установка времени
+  */
+void ser2mms_set_time(uint32_t *epoch, uint32_t *usec)
 {
   assert(epoch && usec);
 #if (PORT_IMPL==PORT_IMPL_LINUX)
@@ -360,3 +368,72 @@ void ser2mms_get_time(uint32_t *epoch, uint32_t *usec)
 #error Macro 'PORT_IMPL' definition is needed
 #endif
 }
+
+#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
+
+#define PERIOD_NS        5000000000L // 0.5 second
+#include <unistd.h>
+/**
+ * @brief 1PPS generation thread function
+ */
+static void *sample(void *arg)
+{
+  // struct timespec ts;
+
+  // ts.tv_sec = 0;
+  // ts.tv_nsec = 250000L;
+  
+  // while (running) {
+
+    // if (gpio_write(gpio_1pps, s2m_toggle) < 0) {
+      // fprintf(stderr, "pps: gpio_write(HIGH) failed\n"); break;
+    // }
+    // s2m_toggle = 0;
+    // nanosleep(&ts, NULL);
+  // }
+  
+  while (running) {
+    toggle ^= 1;
+    gpio_write(gpio_v_rdy, toggle);
+    sleep(1);
+  }
+
+  thread_exit();
+  return NULL;
+}
+
+/**
+  * @brief Установка обработчиков
+  */
+static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) )
+{
+  struct sigaction sa = {0};
+  // Разрешаем сигнал SIGUSR1 и ставим обработчик
+  sa.sa_handler = pSigHandler;
+  sigemptyset( &sa.sa_mask );
+  sa.sa_flags = 0;
+  sigaction(iSignalNr, &sa, NULL);
+}
+
+/**
+  * @brief Обработчик SIGTERM
+  */
+ static void handler_sigterm(int sig)
+ {  
+   switch ( sig ) {
+     case SIGTERM: running = 0; break;
+   }
+ }
+ 
+ /**
+   * @brief Обработчик SIGINT
+   */
+ static void handler_sigint(int sig)
+ {    
+   switch ( sig ) {
+     case SIGINT: running = 0; break;
+   }
+ }
+
+
+#endif // PORT_IMPL_LINUX && LINUX_HW_IMPL_ARM
