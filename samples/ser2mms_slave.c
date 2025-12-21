@@ -7,8 +7,6 @@
 #include "ser2mms.h"
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
 #include "gpio.h"
-#include "port_can.h"
-#include "port_pps.h"
 #include "port_thread.h"
 #endif
 #include <assert.h>
@@ -21,34 +19,15 @@
 
 
 #define P9_23                           (17 + 32*1) // uart2_de
-#define P9_15                           (16 + 32*1) // v_flt
-#define P9_25                           (21 + 32*3) // v_rdy
-#define P9_14                           (18 + 32*1) // flt1_in
-#define P9_16                           (19 + 32*1) // flt2_in
-#define P9_17                           ( 5 + 32*0) // flt1_out
-#define P9_18                           ( 4 + 32*0) // flt2_out
 
 
 static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) );
 static void handler_sigterm(int sig);
 static void handler_sigint(int sig);
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-static void *sample(void *arg);
-#endif
 
 
 int running = 1;
 static s2m_t *s2m = NULL;
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-static gpio_t *gpio_v_flt;
-static gpio_t *gpio_v_rdy;
-static gpio_t *gpio_flt1_in;
-static gpio_t *gpio_flt2_in;
-static gpio_t *gpio_flt1_out;
-static gpio_t *gpio_flt2_out;
-static thread_t thread;
-#endif
-
 static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
@@ -86,43 +65,6 @@ int main(void)
     exit(1);
   }
   
-#if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  pps_t pps = pps_new();
-  if (!pps) printf("[main] pps=null\r\n");
-  
-  if (pps_run(pps) < 0) {
-    printf("[main] can't run pps\r\n");
-    pps_destroy(pps);
-    exit(1);
-  }
-
-  // can_t can_ptr = can_new("can1", 0);
-  // assert(can_ptr);
-
-  // Настройка входов/выходов
-  // светики фронт
-  gpio_v_flt = gpio_new();
-  gpio_open_sysfs(gpio_v_flt, P9_15, GPIO_DIR_OUT);
-  gpio_v_rdy = gpio_new();
-  gpio_open_sysfs(gpio_v_rdy, P9_25, GPIO_DIR_OUT);
-  // Авария входы
-  gpio_flt1_in = gpio_new();
-  gpio_open_sysfs(gpio_flt1_in, P9_14, GPIO_DIR_IN);
-  gpio_flt2_in = gpio_new();
-  gpio_open_sysfs(gpio_flt2_in, P9_16, GPIO_DIR_IN);
-  // Авария выходы
-  gpio_flt1_out = gpio_new();
-  gpio_open_sysfs(gpio_flt1_out, P9_17, GPIO_DIR_OUT);
-  gpio_flt2_out = gpio_new();
-  gpio_open_sysfs(gpio_flt2_out, P9_18, GPIO_DIR_OUT);
-  
-  // один поток на все gpio
-  thread = thread_new((const u8_t *)"sample", sample, NULL);
-  if (!thread) {
-    perror("Thread"); exit(1);
-  }
-#endif
-  
   // run
   ser2mms_run(s2m);
   
@@ -133,9 +75,6 @@ int main(void)
   
   // close
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-  // can_del(can_ptr);
-  pps_stop(pps);
-  pps_destroy(pps);
 #endif
   ser2mms_stop(s2m);
   return 0; 
@@ -370,37 +309,6 @@ void ser2mms_set_time(uint32_t *epoch, uint32_t *usec)
 }
 
 #if (PORT_IMPL==PORT_IMPL_LINUX)&&(LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-
-#define PERIOD_NS        5000000000L // 0.5 second
-#include <unistd.h>
-/**
- * @brief 1PPS generation thread function
- */
-static void *sample(void *arg)
-{
-  // struct timespec ts;
-
-  // ts.tv_sec = 0;
-  // ts.tv_nsec = 250000L;
-  
-  // while (running) {
-
-    // if (gpio_write(gpio_1pps, s2m_toggle) < 0) {
-      // fprintf(stderr, "pps: gpio_write(HIGH) failed\n"); break;
-    // }
-    // s2m_toggle = 0;
-    // nanosleep(&ts, NULL);
-  // }
-  
-  while (running) {
-    toggle ^= 1;
-    gpio_write(gpio_v_rdy, toggle);
-    sleep(1);
-  }
-
-  thread_exit();
-  return NULL;
-}
 
 /**
   * @brief Установка обработчиков

@@ -5,9 +5,9 @@
  */
 
 #include "mms_if.h"
-#include <stdbool.h>
-#include <stddef.h>
 #include <assert.h>
+#include <stdlib.h>
+#include <time.h>
 
 #if (S2M_USE_LIBIEC==0)
 static void MmsValue_delete(MmsValue* mms); // TODO
@@ -17,6 +17,7 @@ static MmsValue* MmsValue_newFloat(f32_t); // TODO
 static MmsValue* MmsValue_newBitString(u32_t argc);
 static void MmsValue_setBitStringBit(MmsValue *mms, int, bool);
 static MmsValue *MmsValue_newUtcTimeByTimestamp(u32_t *);
+static MmsValue *MmsValue_newUtcTime(uint32_t timeval);
 #endif//S2M_USE_LIBIEC
 
 // ============================= Public functions ==============================
@@ -166,6 +167,13 @@ static void MmsValue_setBitStringBit(MmsValue *mms, int value, bool q)
 static MmsValue *MmsValue_newUtcTimeByTimestamp(u32_t *timestamp)
 {
   (void)timestamp;
+  return NULL;
+}
+
+static MmsValue*
+MmsValue_newUtcTime(uint32_t timeval)
+{
+  (void)timeval;
   return NULL;
 }
 
