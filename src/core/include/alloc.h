@@ -1,40 +1,41 @@
 /**
- * @file port_alloc.h
+ * @file alloc.h
  * @author Ilia Proniashin
  * @date 30-October-2025
+ * 
+ * Memory allocation macros.
+ * Provides unified macros for static and dynamic memory allocation,
+ * allowing compile-time selection of allocation strategy per module.
  */
+
 #ifndef ALLOC_H
 #define ALLOC_H
 
 #include <string.h>
 #include <stdlib.h>
 
-// ==============================================================================
-// ¬нутренние макросы дл¤ конкатенации имЄн
-// ==============================================================================
+// Internal macros for name concatenation
 #define _CONCAT(a, b) a##b
 #define CONCAT(a, b) _CONCAT(a, b)
 
-// ==============================================================================
-// ѕубличные макросы
-// ==============================================================================
-
 /**
- * @brief Declare static storage for module
- * —оздаЄт статические переменные _<module>_self и _<module>_self_is_used
+ * Declare static storage for module.
+ * Creates static variables _<module>_self and _<module>_self_is_used.
+ * 
  * @param module Module name (THREAD, RS485, TIMER, etc.)
  * @param type Structure type (struct thread_s, struct rs485_s, etc.)
  */
 #define STATIC_DECLARE(mod, type) static type _##mod##_self; \
-                                  static int _##mod##_self_is_used = 0;
+  static int _##mod##_self_is_used = 0;
 
 /**
- * @brief Allocate object (static or dynamic)
- * јвтоматически использует флаг <module>_USE_STATIC дл¤ выбора типа аллокации
+ * Allocate memory for object (statically or dynamically).
+ * Automatically uses <module>_USE_STATIC flag to select allocation type.
+ * 
  * @param module Module name (THREAD, RS485, TIMER, etc.)
  * @param type Structure type
  * @param ptr_name Variable name for pointer
- * @param on_error Action on allocation failure (e.g., return NULL)
+ * @param on_error Action on allocation error (e.g., return NULL)
  */
 #define ALLOC(module, type, ptr_name, on_error) \
   type *ptr_name; \
@@ -51,8 +52,9 @@
   } while(0)
 
 /**
- * @brief Free object
- * јвтоматически использует флаг <module>_USE_STATIC
+ * Free object.
+ * Automatically uses <module>_USE_STATIC flag.
+ * 
  * @param module Module name (THREAD, RS485, TIMER, etc.)
  * @param ptr Pointer to object
  */

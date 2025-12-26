@@ -2,73 +2,95 @@
  * @file mms_if.c
  * @author Ilia Proniashin, msg@proglyk.ru
  * @date 09-October-2025
+ * 
+ * MMS attribute interface implementation.
  */
 
 #include "mms_if.h"
+#include <stdio.h>
 #include <assert.h>
-#include <stdlib.h>
 #include <time.h>
 
-#if (S2M_USE_LIBIEC==0)
-static void MmsValue_delete(MmsValue* mms); // TODO
-static bool IedServer_updateAttributeValue(void *, DataAttribute *, MmsValue *); // TODO
-static MmsValue* MmsValue_newIntegerFromInt32(s32_t); // TODO
-static MmsValue* MmsValue_newFloat(f32_t); // TODO
+// Private function declarations
+
+#if (!S2M_USE_LIBIEC)
+// Private function prototypes for libiec61850 API emulation
+static MmsValue* MmsValue_newIntegerFromInt32(s32_t);
+static MmsValue* MmsValue_newFloat(f32_t);
 static MmsValue* MmsValue_newBitString(u32_t argc);
 static void MmsValue_setBitStringBit(MmsValue *mms, int, bool);
+static void MmsValue_delete(MmsValue* mms);
+#if (S2M_USE_OLD_LIBIEC_API)
+static bool IedServer_updateAttributeValue(void *, DataAttribute *, MmsValue *);
 static MmsValue *MmsValue_newUtcTimeByTimestamp(u32_t *);
+#else
+static void IedServer_updateAttributeValue(void *, DataAttribute *, MmsValue *);
 static MmsValue *MmsValue_newUtcTime(uint32_t timeval);
-#endif//S2M_USE_LIBIEC
+#endif
+#endif
 
-// ============================= Public functions ==============================
+// Public interface function definitions
 
 /**
- * @brief Set INT32 value for specified attribute.
+ * Set INT32 value of target attribute.
  */
-bool mms_if_set_attr_s32( void *argv, DataAttribute* attr, const s32_t value )
+bool mms_if_set_attr_s32(void *argv, DataAttribute* attr, const s32_t value)
 {
+  bool rc = true;
   IedServer ied = (IedServer)argv;
   assert(ied && attr);
-  // Local MmsValue entity
+
+  // Create local MmsValue entity
   MmsValue* pValueMms = MmsValue_newIntegerFromInt32(value);
-  // If memory allocation failed, exit
   if (!pValueMms) return false;
+
   // Update attribute
-  //bool result = IedServer_updateAttributeValue(ied, attr, pValueMms);
-  IedServer_updateAttributeValue(ied, attr, pValueMms); // TODO "removed bool"
+#if (S2M_USE_OLD_LIBIEC_API)
+  rc = IedServer_updateAttributeValue(ied, attr, pValueMms);
+#else
+  IedServer_updateAttributeValue(ied, attr, pValueMms);
+#endif
+
   // Free resource
   MmsValue_delete(pValueMms);
-  return true;
+  return rc;
 }
 
 /**
- * @brief Set FLOAT value for specified attribute.
+ * Set FLOAT value of target attribute.
  */
-bool mms_if_set_attr_f32( void *argv, DataAttribute* attr, const f32_t value )
+bool mms_if_set_attr_f32(void *argv, DataAttribute* attr, const f32_t value)
 {
+  bool rc = true;
   IedServer ied = (IedServer)argv;
   assert(ied && attr);
-  // Local MmsValue entity
+
+  // Create local MmsValue entity
   MmsValue* pValueMms = MmsValue_newFloat(value);
-  // If memory allocation failed, exit
   if (!pValueMms) return false;
+
   // Update attribute
-  // bool result = IedServer_updateAttributeValue(ied, attr, pValueMms);
-  IedServer_updateAttributeValue(ied, attr, pValueMms); // TODO "removed bool"
+#if (S2M_USE_OLD_LIBIEC_API)
+  rc = IedServer_updateAttributeValue(ied, attr, pValueMms);
+#else
+  IedServer_updateAttributeValue(ied, attr, pValueMms);
+#endif
+
   // Free resource
   MmsValue_delete(pValueMms);
-  return true;
+  return rc;
 }
 
 /**
- * @brief Set timestamp value for specified attribute.
+ * Set timestamp of target attribute.
  */
-bool mms_if_set_attr_t( void *argv, DataAttribute *attr, const u32_t *ts_ext )
+bool mms_if_set_attr_t(void *argv, DataAttribute *attr, const u32_t *ts_ext)
 {
+  bool rc = true;
   IedServer ied = (IedServer)argv;
   uint32_t ts_int[2];
-  // All three arguments are not validated further
   assert(ied && attr);
+
   if (!ts_ext) {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
     struct timespec tspec;
@@ -76,60 +98,65 @@ bool mms_if_set_attr_t( void *argv, DataAttribute *attr, const u32_t *ts_ext )
     ts_int[0] = tspec.tv_sec;
     ts_int[1] = tspec.tv_nsec / 1000;
 #elif (PORT_IMPL==PORT_IMPL_RTOS)
-#error "Not available"
-    // Get time from clock
-    //GET_SYSTEM_TIME((timestamp+0),(timestamp+1));
+    #error "Not available"
+    // Get time from RTC
 #elif (PORT_IMPL==PORT_IMPL_BARE)
-#error "Not available"
-    // Get time from clock
-    //GET_SYSTEM_TIME((timestamp+0),(timestamp+1));
+    #error "Not available"
+    // Get time from RTC
 #else
-#error "PORT_IMPL must be defined"
-#endif //PORT_IMPL==...
+    #error "PORT_IMPL must be defined"
+#endif
   }
-  // Save it in MmsValue variable
-  // if ( (MmsValue* pTimeMms = MmsValue_newUtcTime(ts_int[0])) == 0) {
-  //   return false;
-  // }
+
+  // Create timestamp MmsValue
   MmsValue* pTimeMms = MmsValue_newUtcTime(ts_int[0]);
-  if (!pTimeMms) {
-    return false;
-  }
-  // MmsValue* pTimeMms = MmsValue_newUtcTimeByTimestamp(
-  //   ts_ext ? (u32_t *)ts_ext : ts_int);
-  // If memory allocation failed, exit
-  // if (!pTimeMms) return false;
+  if (!pTimeMms) return false;
+
   // Update attribute
+#if (S2M_USE_OLD_LIBIEC_API)
+  rc = IedServer_updateAttributeValue(ied, attr, pTimeMms);
+#else
   IedServer_updateAttributeValue(ied, attr, pTimeMms);
+#endif
+
   // Free resource
   MmsValue_delete(pTimeMms);
-  return true;
+  return rc;
 }
 
 /**
- * @brief Set quality value for specified attribute.
+ * Set data quality of target attribute.
  */
-bool mms_if_set_attr_q( void *argv, DataAttribute* attr, const bool quality )
+bool mms_if_set_attr_q(void *argv, DataAttribute* attr, const bool quality)
 {
+  bool rc = true;
   IedServer ied = (IedServer)argv;
   assert(ied && attr);
-  // Local MmsValue entity
+
+  // Create local MmsValue entity (13-bit bit string)
   MmsValue* pQualityMms = MmsValue_newBitString(13);
-  // If memory allocation failed, exit
-  if (!pQualityMms)
-    return false;
-  // Write true value to bit position 0
+  if (!pQualityMms) return false;
+
+  // Set value at bit position 0
   MmsValue_setBitStringBit(pQualityMms, 0, quality);
+
   // Update attribute
+#if (S2M_USE_OLD_LIBIEC_API)
+  rc = IedServer_updateAttributeValue(ied, attr, pQualityMms);
+#else
   IedServer_updateAttributeValue(ied, attr, pQualityMms);
+#endif
+
   // Free resource
   MmsValue_delete(pQualityMms);
-  return true;
+  return rc;
 }
 
-// ============================= Static functions ==============================
-
-#if (S2M_USE_LIBIEC==0)
+#if (!S2M_USE_LIBIEC)
+/**
+ * Stub functions for libiec61850 internal API emulation.
+ * Used when library is unavailable.
+ */
 static MmsValue *MmsValue_newFloat(f32_t value)
 {
   (void)value;
@@ -140,15 +167,6 @@ static MmsValue *MmsValue_newIntegerFromInt32(s32_t value)
 {
   (void)value;
   return NULL;
-}
-
-static bool IedServer_updateAttributeValue(void *ied, DataAttribute *attr,
-                                            MmsValue *mms)
-{
-  (void)ied;
-  (void)attr;
-  (void)mms;
-  return false;
 }
 
 static MmsValue *MmsValue_newBitString(u32_t argc)
@@ -164,22 +182,39 @@ static void MmsValue_setBitStringBit(MmsValue *mms, int value, bool q)
   (void)q;
 }
 
+static void MmsValue_delete(MmsValue *mms)
+{
+  (void)mms;
+}
+
+#if (S2M_USE_OLD_LIBIEC_API)
 static MmsValue *MmsValue_newUtcTimeByTimestamp(u32_t *timestamp)
 {
   (void)timestamp;
   return NULL;
 }
 
-static MmsValue*
-MmsValue_newUtcTime(uint32_t timeval)
+static bool
+IedServer_updateAttributeValue(void *ied, DataAttribute *attr, MmsValue *mms)
+{
+  (void)ied;
+  (void)attr;
+  (void)mms;
+  return false;
+}
+#else // S2M_USE_OLD_LIBIEC_API
+static MmsValue *MmsValue_newUtcTime(uint32_t timeval)
 {
   (void)timeval;
   return NULL;
 }
 
-static void MmsValue_delete(MmsValue *mms)
+static void
+IedServer_updateAttributeValue(void *ied, DataAttribute *attr, MmsValue *mms)
 {
+  (void)ied;
+  (void)attr;
   (void)mms;
 }
-
-#endif//LIBIEC_EXIST
+#endif // S2M_USE_OLD_LIBIEC_API
+#endif // S2M_USE_LIBIEC

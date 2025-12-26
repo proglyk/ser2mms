@@ -1,11 +1,14 @@
 /**
-  * @file   crc16.c
-  * @author Ilia Proniashin, msg@proglyk.ru
-  * @date   29-September-2025
-  */
+ * @file crc16.c
+ * @author Ilia Proniashin, msg@proglyk.ru
+ * @date 29-September-2025
+ * 
+ * CRC16 calculation implementation.
+ */
 
 #include "port_types.h"
 
+/** Precomputed CRC16 lookup table. */
 static const u16_t wCRCTable[] = {
   0x0000, 0xC0C1, 0xC181, 0x0140, 0xC301, 0x03C0, 0x0280, 0xC241,
   0xC601, 0x06C0, 0x0780, 0xC741, 0x0500, 0xC5C1, 0xC481, 0x0440,
@@ -41,16 +44,23 @@ static const u16_t wCRCTable[] = {
   0x8201, 0x42C0, 0x4380, 0x8341, 0x4100, 0x81C1, 0x8081, 0x4040
 };
 
-
+/**
+ * Calculate CRC16 checksum.
+ * Uses table-based method for fast CRC16 calculation over data array.
+ * 
+ * @param nData pointer to data array
+ * @param wLength data array length in bytes
+ * @return calculated CRC16 value
+ */
 u16_t crc16(const u8_t *nData, u16_t wLength)
 {
   u8_t nTemp;
   u16_t wCRCWord = 0xFFFF;
-  
+
   while (wLength--) {
     nTemp = *nData++ ^ wCRCWord;
     wCRCWord >>= 8;
-    wCRCWord  ^= wCRCTable[(nTemp & 0xFF)];
+    wCRCWord ^= wCRCTable[(nTemp & 0xFF)];
   }
 
   return wCRCWord;
