@@ -1,16 +1,18 @@
 /**
-  * @file   ser2mms_pool.c
-  * @author Ilia Proniashin, msg@proglyk.ru
-  * @date   09-October-2025
-  */
+* @file ser2mms_poll.c
+* @author Ilia Proniashin, msg@proglyk.ru
+* @date 09-October-2025
+*
+* Example implementation for ser2mms in POLL mode.
+*/
 
 #include "ser2mms.h"
-#include <assert.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <signal.h>
-#include <time.h>
 
+#include <assert.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 
 static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) );
 static void handler_sigquit(int sig);
@@ -23,12 +25,12 @@ static rs485_init_t s2m_stty_init = {
 #if (PORT_IMPL==PORT_IMPL_LINUX)
 #if (LINUX_HW_IMPL==LINUX_HW_IMPL_WSL)
   .device_path = "/dev/ttyV0",
-// .device_path = "/dev/ttyUSB1",
-  .gpio_path   = NULL
+  // .device_path = "/dev/ttyUSB1",
+  .gpio_path = NULL
 #elif (LINUX_HW_IMPL==LINUX_HW_IMPL_ARM)
-//#error "Not available"
+  //#error "Not available"
   .device_path = NULL,
-  .gpio_path   = NULL,
+  .gpio_path = NULL,
 #endif
 #else
 #error "Not available"
@@ -38,19 +40,18 @@ static rs485_init_t s2m_stty_init = {
 int main(void)
 {
   char symb;
-  
-  vSetSignal(SIGQUIT, handler_sigquit); // код (3) 'Ctrl+\'
-  vSetSignal(SIGINT,  handler_sigint);  // код (2) 'Ctrl+C'
-  
+  vSetSignal(SIGQUIT, handler_sigquit); // code (3) 'Ctrl+\\'
+  vSetSignal(SIGINT, handler_sigint);   // code (2) 'Ctrl+C'
+
   // init
-  s2m = ser2mms_new(NULL, S2M_POLL, 12, 
+  s2m = ser2mms_new(NULL, S2M_POLL, 12,
                     (void *)&s2m_stty_init);
   assert(s2m);
-  
+
   // run
   ser2mms_run(s2m);
   printf("Runned\r\n");
-  
+
   // loop
   do {
     printf( "> " );
@@ -60,98 +61,94 @@ int main(void)
       case 'q': running = 0; break;
     }
   } while( running );
-  
+
   // close
-  ser2mms_stop(s2m);
+  ser2mms_destroy(s2m);
   printf("Stopped\r\n");
-  return 0; 
+  return 0;
 }
 
 /**
-  * @brief Чтение значений страниц
-  */
- void ser2mms_read_carg(void *opaque, u16_t *carg_buf, __UNUSED u32_t carg_len, u8_t ds, u8_t page)
+* Read page values
+*/
+void ser2mms_write_page(page_prm_t *buf, u32_t *buf_len, u8_t ds, u8_t page)
 {
+  u32_t cnt = 0;
+  assert(buf && buf_len);
   // f32_t ftemp;
   // s32_t stemp;
-  s2m_t *s2m = (s2m_t *)opaque;
-  assert(s2m);
-  
-  // Пробегаемся по позициям Датасетов
-  // заполняем переменные
+
+  // Iterate over Dataset positions
+  // Fill variables
   switch (ds)
-  {    
-    // Датасет GGIO1
-     case (1): {
+  {
+    // Dataset GGIO1
+    case (1): {
       switch (page)
       {
-        // Страница 0
+        // Page 0
         case (0): {
-          carg_buf[0] = 1;
-          carg_buf[1] = 2;
-          carg_buf[2] = 3;
+          buf[cnt++].mag = 1;
+          buf[cnt++].mag = 2;
+          buf[cnt++].mag = 3;
+          *buf_len = cnt;
         } break;
-        
-        // Страница 1
+
+        // Page 1
         case (1): {
-          carg_buf[0] = 4;
-          carg_buf[1] = 5;
-          carg_buf[2] = 6;
+          buf[cnt++].mag = 4;
+          buf[cnt++].mag = 5;
+          buf[cnt++].mag = 6;
+          *buf_len = cnt;
         } break;
-        
-        // Страница 2
+
+        // Page 2
         case (2): {
-          carg_buf[0] = 7;
-          carg_buf[1] = 8;
-          carg_buf[2] = 9;
+          buf[cnt++].mag = 7;
+          buf[cnt++].mag = 8;
+          buf[cnt++].mag = 9;
+          *buf_len = cnt;
         } break;
-        
-        // Страница 3
+
+        // Page 3
         case (3): {
-          carg_buf[0] = 10;
-          carg_buf[1] = 11;
-          carg_buf[2] = 12;
+          buf[cnt++].mag = 10;
+          buf[cnt++].mag = 11;
+          buf[cnt++].mag = 12;
+          *buf_len = cnt;
         } break;
       }
     } break;
-    
-    // Датасет GGIO2
+
+    // Dataset GGIO2
     case (2): {
-      
-    }  break;
-    
-    // Датасет GGIO3
+    } break;
+
+    // Dataset GGIO3
     case (3): {
-      
     } break;
-    
-    // Датасет GGIO4
+
+    // Dataset GGIO4
     case (4): {
-      
     } break;
-    
-    // Датасет GGIO5
+
+    // Dataset GGIO5
     case (5): {
-    
     } break;
-    
-    // Датасет GGIO6
+
+    // Dataset GGIO6
     case (6): {
-      
     } break;
   }
 }
 
 /**
-  * @brief Чтение значений подписок
-  */
- void ser2mms_read_subs(void *opaque, prm_t *subs_buf, __UNUSED u32_t subs_len)
+* Read subscription values
+*/
+void ser2mms_write_subs(sub_prm_t *buf, u32_t *buf_len)
 {
   uint32_t ts_int[2];
-  
-  assert(subs_buf);
-  (void)opaque;
-  (void)subs_len;
+  assert(buf && buf_len);
 
 #if (PORT_IMPL==PORT_IMPL_LINUX)
   struct timespec tspec;
@@ -163,88 +160,57 @@ int main(void)
 #else
 #error Macro 'PORT_IMPL' definition is needed
 #endif
-    
-  buf[0].sl = 1;
-  buf[0].pul[0] = ts_int[0];
-  buf[0].pul[1] = ts_int[1];
-  
-  buf[1].sl = 2;
-  buf[1].pul[0] = ts_int[0];
-  buf[1].pul[1] = ts_int[1];
-  
-  buf[2].sl = 3;
-  buf[2].pul[0] = ts_int[0];
-  buf[2].pul[1] = ts_int[1];
-  
-  buf[3].sl = 4;
-  buf[3].pul[0] = ts_int[0];
-  buf[3].pul[1] = ts_int[1];
-  
-  buf[4].sl = 5;
-  buf[4].pul[0] = ts_int[0];
-  buf[4].pul[1] = ts_int[1];
-  
-  buf[5].sl = 6;
-  buf[5].pul[0] = ts_int[0];
-  buf[5].pul[1] = ts_int[1];
-  
-  buf[6].sl = 7;
-  buf[6].pul[0] = ts_int[0];
-  buf[6].pul[1] = ts_int[1];
-  
-  buf[7].sl = 8;
-  buf[7].pul[0] = ts_int[0];
-  buf[7].pul[1] = ts_int[1];
-  
-  buf[8].sl = 9;
-  buf[8].pul[0] = ts_int[0];
-  buf[8].pul[1] = ts_int[1];
-  
-  buf[9].sl = 10;
-  buf[9].pul[0] = ts_int[0];
-  buf[9].pul[1] = ts_int[1];
-  
-  buf[10].sl = 11;
-  buf[10].pul[0] = ts_int[0];
-  buf[10].pul[1] = ts_int[1];
-  
+
+#if (!S2M_REDUCED)
+  for (u32_t i=0; i<SER_NUM_SUBS; i++) {
+    buf[i].mag = i;
+    buf[i].t[0] = ts_int[0];
+    buf[i].t[1] = ts_int[1];
+  }
+  *buf_len = SER_NUM_SUBS;
+#else
+  (void)buf;
+  *buf_len = 0;
+#endif
 }
 
 /**
-  * @brief запись ответа
-  */
- void ser2mms_write_answer(void *argv, u16_t *answ_buf, u32_t *answ_len)
+* Write answer
+*/
+void ser2mms_write_answer(answ_prm_t *answ_buf, u32_t *answ_len)
 {
-  // DataAttribute *data_attr;
-  f32_t ftemp = 1.0f;
   u32_t cnt = 0;
-  
+  f32_t ftemp = 100.0f;
+  // DataAttribute *data_attr;
+  // f32_t ftemp;
+  // u16_t ustemp;
+
   // Iz
   // data_attr = (DataAttribute*)IEDMODEL_UPG_GGIO0_Iz_mag_f;
   // ftemp = MmsValue_toFloat(data_attr->mmsValue);
   ftemp *= 2.0f;
-  answ_buf[cnt++] = (u16_t)((s32_t)ftemp & 0x0000ffff);
+  answ_buf[cnt++].mag = (u16_t)((s32_t)ftemp & 0x0000ffff);
 
   // Rlz
   // data_attr = (DataAttribute*)IEDMODEL_UPG_GGIO0_Rlz_mag_f;
   // ftemp = MmsValue_toFloat(data_attr->mmsValue);
   ftemp *= 2.0f;
-  answ_buf[cnt++] = (u16_t)((s32_t)ftemp & 0x0000ffff);
+  answ_buf[cnt++].mag = (u16_t)((s32_t)ftemp & 0x0000ffff);
 
   // usCirc
   // data_attr = (DataAttribute*)IEDMODEL_UPG_GGIO0_Circ_mag_i;
-  // self->outdata.usCirc = (u16_t)(MmsValue_toInt32(data_attr->mmsValue) & 
-    // 0x0000ffff);
+  // self->outdata.usCirc = (u16_t)(MmsValue_toInt32(data_attr->mmsValue) &
+  //                                 0x0000ffff);
   // answ_buf[cnt++] = (u16_t)( MmsValue_toInt32(data_attr->mmsValue) & 0x0000ffff );
   ftemp *= 2.0f;
-  answ_buf[cnt++] = (u16_t)((s32_t)ftemp & 0x0000ffff);
-  //*answ_len = cnt;
+  answ_buf[cnt++].mag = (u16_t)((s32_t)ftemp & 0x0000ffff);
+  *answ_len = cnt;
 }
 
 static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) )
 {
   struct sigaction sa = {0};
-  // Разрешаем сигнал SIGUSR1 и ставим обработчик
+  // Enable signal SIGUSR1 and set handler
   sa.sa_handler = pSigHandler;
   sigemptyset( &sa.sa_mask );
   sa.sa_flags = 0;
@@ -254,11 +220,10 @@ static void vSetSignal( int iSignalNr, void (*pSigHandler)(int) )
 static void handler_sigquit(int sig)
 {
   printf("[sig] SIGQUIT (%d)\r\n", sig);
-  
   switch ( sig ) {
     case SIGQUIT:
       ser2mms_test_tick(s2m);
-    break;
+      break;
   }
 }
 
@@ -266,15 +231,13 @@ static void handler_sigint(int sig)
 {
   static u32_t mode = 0;
   static u32_t id = 1;
-  
   printf("[sig] SIGINT (%d)\r\n", sig);
-  
   switch ( sig ) {
     case SIGINT:
       //ser2mms_set_id(s2m, id++);
       ser2mms_set_cmd(s2m, mode ^= 1);
       //printf("[sig] mode=%01d\n", id);
       //mb__test_recv(mb__inst());
-    break;
+      break;
   }
 }

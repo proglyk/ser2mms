@@ -35,13 +35,18 @@ typedef void (*fn_t)(void *);
 typedef s32_t     fd_t;
 
 #if defined (__GNUC__)
-#define __UNUSED __attribute__((__unused__))
-#define __PACKED __attribute__((__packed__))
-#define __WEAK   __attribute__((weak))
+
+#define __UNUSED      __attribute__((__unused__))
+#define __PACKED      __attribute__((__packed__))
+#define __WEAK        __attribute__((weak))
+#define __FALLTHROUGH __attribute__((fallthrough))
+
 #elif defined (__ICCARM__)
+
 #define __UNUSED
 #define __PACKED
 #define __WEAK   __weak
+
 #endif
 
 #endif /*PORT_TYPES_H*/
