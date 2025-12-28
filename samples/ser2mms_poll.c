@@ -164,49 +164,49 @@ int main(void)
 #error Macro 'PORT_IMPL' definition is needed
 #endif
     
-  subs_buf[0].sl = 1;
-  subs_buf[0].pul[0] = ts_int[0];
-  subs_buf[0].pul[1] = ts_int[1];
+  buf[0].sl = 1;
+  buf[0].pul[0] = ts_int[0];
+  buf[0].pul[1] = ts_int[1];
   
-  subs_buf[1].sl = 2;
-  subs_buf[1].pul[0] = ts_int[0];
-  subs_buf[1].pul[1] = ts_int[1];
+  buf[1].sl = 2;
+  buf[1].pul[0] = ts_int[0];
+  buf[1].pul[1] = ts_int[1];
   
-  subs_buf[2].sl = 3;
-  subs_buf[2].pul[0] = ts_int[0];
-  subs_buf[2].pul[1] = ts_int[1];
+  buf[2].sl = 3;
+  buf[2].pul[0] = ts_int[0];
+  buf[2].pul[1] = ts_int[1];
   
-  subs_buf[3].sl = 4;
-  subs_buf[3].pul[0] = ts_int[0];
-  subs_buf[3].pul[1] = ts_int[1];
+  buf[3].sl = 4;
+  buf[3].pul[0] = ts_int[0];
+  buf[3].pul[1] = ts_int[1];
   
-  subs_buf[4].sl = 5;
-  subs_buf[4].pul[0] = ts_int[0];
-  subs_buf[4].pul[1] = ts_int[1];
+  buf[4].sl = 5;
+  buf[4].pul[0] = ts_int[0];
+  buf[4].pul[1] = ts_int[1];
   
-  subs_buf[5].sl = 6;
-  subs_buf[5].pul[0] = ts_int[0];
-  subs_buf[5].pul[1] = ts_int[1];
+  buf[5].sl = 6;
+  buf[5].pul[0] = ts_int[0];
+  buf[5].pul[1] = ts_int[1];
   
-  subs_buf[6].sl = 7;
-  subs_buf[6].pul[0] = ts_int[0];
-  subs_buf[6].pul[1] = ts_int[1];
+  buf[6].sl = 7;
+  buf[6].pul[0] = ts_int[0];
+  buf[6].pul[1] = ts_int[1];
   
-  subs_buf[7].sl = 8;
-  subs_buf[7].pul[0] = ts_int[0];
-  subs_buf[7].pul[1] = ts_int[1];
+  buf[7].sl = 8;
+  buf[7].pul[0] = ts_int[0];
+  buf[7].pul[1] = ts_int[1];
   
-  subs_buf[8].sl = 9;
-  subs_buf[8].pul[0] = ts_int[0];
-  subs_buf[8].pul[1] = ts_int[1];
+  buf[8].sl = 9;
+  buf[8].pul[0] = ts_int[0];
+  buf[8].pul[1] = ts_int[1];
   
-  subs_buf[9].sl = 10;
-  subs_buf[9].pul[0] = ts_int[0];
-  subs_buf[9].pul[1] = ts_int[1];
+  buf[9].sl = 10;
+  buf[9].pul[0] = ts_int[0];
+  buf[9].pul[1] = ts_int[1];
   
-  subs_buf[10].sl = 11;
-  subs_buf[10].pul[0] = ts_int[0];
-  subs_buf[10].pul[1] = ts_int[1];
+  buf[10].sl = 11;
+  buf[10].pul[0] = ts_int[0];
+  buf[10].pul[1] = ts_int[1];
   
 }
 

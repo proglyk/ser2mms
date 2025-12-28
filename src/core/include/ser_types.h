@@ -1,12 +1,10 @@
 /**
- * @file ser_types.h
- * @author Ilia Proniashin, msg@proglyk.ru
- * @date 22-September-2025
- * 
- * Serial protocol type definitions.
- * Defines data types, structures and macros used in the serial protocol.
- */
-
+* @file ser_types.h
+* @author Ilia Proniashin, msg@proglyk.ru
+* @date 22-September-2025
+*
+* Type definitions for serial protocol handler.
+*/
 #ifndef SER2MMS_TYPES_H
 #define SER2MMS_TYPES_H
 
@@ -30,29 +28,25 @@ typedef enum {
   MODE_SLAVE, MODE_POLL
 } ser_mode_t;
 
-/** Response mode: parameters / system time transmission. */
+/** Response mode: parameters transfer / system time. */
 typedef enum {
   CMD_PARAMETERS, CMD_TIMESET
 } ser_cmd_t;
 
-/** Subscription parameter sub. */
+/** Subscription parameter. */
 typedef struct {
-  s32_t sl;
-  u32_t pul[2];
-} prm_t;
+  s16_t mag;    // Magnitude value
+  u32_t t[2];   // Timestamp
+} sub_prm_t;
 
-/** Page parameters. */
+/** Page parameter. */
 typedef struct {
-  u16_t usParam0;
-  u16_t usParam1;
-  u16_t usParam2;
-} cargvalue_t;
+  s16_t mag;    // Magnitude value
+} page_prm_t;
 
-/** Response parameters. */
+/** Answer parameter. */
 typedef struct {
-  u16_t usIz;
-  u16_t usRlz;
-  u16_t usCirc;
-} outdata_t;
+  s16_t mag;    // Magnitude value
+} answ_prm_t;
 
 #endif
